@@ -2,7 +2,7 @@ version: "2"
 sql:
   - engine: "postgresql"
     queries: "db/queries"
-    schema: "db/init.sql"    # ← acá le decís dónde está el schema
+    schema: "db/schema.sql"    
     gen:
       go:
         package: "db"
