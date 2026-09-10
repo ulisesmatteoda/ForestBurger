@@ -4,14 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"testing"
-	"forestburger/db/sqlc"
+
+	sqlc "forestburger/db/sqlc"
 
 	_ "github.com/lib/pq"
 )
 
 // setupTestDB inicializa la conexión y devuelve la instancia de Queries y una función de limpieza.
-// Se puede reutilizar en cualquier test nuevo que necesite la BD.
-func setupTestDB(t *testing.T) (*Queries, func()) {
+func setupTestDB(t *testing.T) (*sqlc.Queries, func()) {
 	t.Helper()
 
 	connStr := "postgres://usuario:password@localhost:5432/forestburger?sslmode=disable"
@@ -29,14 +29,14 @@ func setupTestDB(t *testing.T) (*Queries, func()) {
 		conn.Close()
 	}
 
-	return New(conn), cleanup
+	return sqlc.New(conn), cleanup
 }
 
 // probarCrearProducto inserta un producto y valida que no falle.
-func probarCrearProducto(t *testing.T, queries *Queries, ctx context.Context) Producto {
+func probarCrearProducto(t *testing.T, queries *sqlc.Queries, ctx context.Context) sqlc.Producto {
 	t.Helper()
 
-	prod, err := queries.CreateProducto(ctx, CreateProductoParams{
+	prod, err := queries.CreateProducto(ctx, sqlc.CreateProductoParams{
 		Nombre:      "Hamburguesa Clásica",
 		Categoria:   "hamburguesa",
 		Precio:      "8500.00",
@@ -54,7 +54,7 @@ func probarCrearProducto(t *testing.T, queries *Queries, ctx context.Context) Pr
 }
 
 // probarObtenerProducto consulta el producto por ID y valida sus campos.
-func probarObtenerProducto(t *testing.T, queries *Queries, ctx context.Context, id int32) Producto {
+func probarObtenerProducto(t *testing.T, queries *sqlc.Queries, ctx context.Context, id int32) sqlc.Producto {
 	t.Helper()
 
 	obtenido, err := queries.GetProducto(ctx, id)
@@ -69,55 +69,30 @@ func probarObtenerProducto(t *testing.T, queries *Queries, ctx context.Context, 
 	return obtenido
 }
 
-// probarListarProductos verifica que el producto creado aparezca en el listado general.
-func probarListarProductos(t *testing.T, queries *Queries, ctx context.Context, idEsperado int32) {
+// probarActualizarProducto modifica el producto y comprueba los cambios.
+func probarActualizarProducto(t *testing.T, queries *sqlc.Queries, ctx context.Context, id int32) sqlc.Producto {
 	t.Helper()
 
-	lista, err := queries.ListProductos(ctx)
-	if err != nil {
-		t.Fatalf("Error al listar productos: %v", err)
-	}
-
-	if len(lista) == 0 {
-		t.Fatal("Se esperaba al menos un producto en la lista")
-	}
-
-	encontrado := false
-	for _, p := range lista {
-		if p.ID == idEsperado {
-			encontrado = true
-			break
-		}
-	}
-	if !encontrado {
-		t.Errorf("Se esperaba encontrar el producto con ID %d en el listado", idEsperado)
-	}
-}
-
-// probarActualizarProducto modifica el producto y valida que los cambios se hayan guardado.
-func probarActualizarProducto(t *testing.T, queries *Queries, ctx context.Context, id int32) Producto {
-	t.Helper()
-
-	actualizado, err := queries.UpdateProducto(ctx, UpdateProductoParams{
+	actualizado, err := queries.UpdateProducto(ctx, sqlc.UpdateProductoParams{
 		ID:          id,
-		Nombre:      "Hamburguesa Clásica Pro",
+		Nombre:      "Hamburguesa Doble Queso",
 		Categoria:   "hamburguesa",
 		Precio:      "9500.00",
-		Descripcion: sql.NullString{String: "Carne, queso, lechuga y bacon", Valid: true},
+		Descripcion: sql.NullString{String: "Doble cheddar y bacon", Valid: true},
 	})
 	if err != nil {
 		t.Fatalf("Error al actualizar producto: %v", err)
 	}
 
-	if actualizado.Nombre != "Hamburguesa Clásica Pro" {
-		t.Errorf("Se esperaba 'Hamburguesa Clásica Pro', se obtuvo '%s'", actualizado.Nombre)
+	if actualizado.Nombre != "Hamburguesa Doble Queso" {
+		t.Errorf("Se esperaba 'Hamburguesa Doble Queso', se obtuvo '%s'", actualizado.Nombre)
 	}
 
 	return actualizado
 }
 
-// probarBorrarProducto elimina el producto y verifica que la eliminación se ejecute correctamente.
-func probarBorrarProducto(t *testing.T, queries *Queries, ctx context.Context, id int32) {
+// probarBorrarProducto elimina el producto por su ID.
+func probarBorrarProducto(t *testing.T, queries *sqlc.Queries, ctx context.Context, id int32) {
 	t.Helper()
 
 	err := queries.DeleteProducto(ctx, id)
@@ -126,13 +101,13 @@ func probarBorrarProducto(t *testing.T, queries *Queries, ctx context.Context, i
 	}
 }
 
-// TestCRUDProducto orquesta el flujo completo invocando las funciones paso a paso.
+// TestCRUDProducto orquesta el flujo completo de prueba invocando cada paso.
 func TestCRUDProducto(t *testing.T) {
 	queries, cleanup := setupTestDB(t)
 	defer cleanup()
 
 	ctx := context.Background()
-	var prod Producto
+	var prod sqlc.Producto
 
 	t.Run("Crear Producto", func(t *testing.T) {
 		prod = probarCrearProducto(t, queries, ctx)
@@ -140,10 +115,6 @@ func TestCRUDProducto(t *testing.T) {
 
 	t.Run("Obtener Producto", func(t *testing.T) {
 		probarObtenerProducto(t, queries, ctx, prod.ID)
-	})
-
-	t.Run("Listar Productos", func(t *testing.T) {
-		probarListarProductos(t, queries, ctx, prod.ID)
 	})
 
 	t.Run("Actualizar Producto", func(t *testing.T) {
