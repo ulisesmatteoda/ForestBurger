@@ -29,9 +29,9 @@ wait-db: up
 # Ejecución de tests -----------------------------------------------
 
 test: build wait-db
+	$(MAKE) clean ; \
 	@go test ./... ; \
 	status=$$? ; \
-	$(MAKE) clean ; \
 	exit $$status
 
 # Tareas posteriores -------------------------------------------------
