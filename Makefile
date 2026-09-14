@@ -1,5 +1,5 @@
 APP_NAME := forestburger
-DB_URL   := postgres://usuario:password@localhost:5432/mydb?sslmode=disable
+DB_URL   := postgres://usuario:password@localhost:5432/forestburger?sslmode=disable
 
 .PHONY: all generate build up down wait-db test clean
 
@@ -29,7 +29,7 @@ wait-db: up
 # Ejecución de tests -----------------------------------------------
 
 test: build wait-db
-	@go test ./... ; \
+	@go test -v ./... ; \
 	status=$$? ; \
 	$(MAKE) clean ; \
 	exit $$status
