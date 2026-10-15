@@ -1,7 +1,7 @@
 APP_NAME := forestburger
 DB_URL   := postgres://usuario:password@localhost:5432/forestburger?sslmode=disable
 
-.PHONY: all generate build up down wait-db test run clean
+.PHONY: all generate build up down wait-db test test-api run clean
 
 all: test
 
@@ -34,6 +34,12 @@ test: build wait-db
 	$(MAKE) clean ; \
 	exit $$status
 
+test-api: build wait-db
+	@./test-api.sh ; \
+	status=$$? ; \
+	$(MAKE) clean ; \
+	exit $$status
+
 # Ejecución del servidor -------------------------------------------
 
 run: build wait-db
@@ -43,4 +49,3 @@ run: build wait-db
 
 clean:
 	@docker compose down -v
-
