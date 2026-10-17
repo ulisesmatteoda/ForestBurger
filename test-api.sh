@@ -18,6 +18,10 @@ trap cleanup EXIT
 
 echo "==> 2. Esperando a que el servidor esté disponible en :8080..."
 until curl -s -o /dev/null "http://localhost:8080/"; do
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+        echo "ERROR: el servidor terminó antes de estar disponible"
+        exit 1
+    fi
     sleep 0.5
 done
 echo "Servidor listo."
