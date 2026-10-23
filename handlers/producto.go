@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"database/sql"
@@ -10,10 +10,6 @@ import (
 
 	sqlc "forestburger/db/sqlc"
 )
-
-type API struct {
-	q *sqlc.Queries
-}
 
 // ---------- DTOs (lo que ve el cliente de la API) ----------
 
@@ -32,59 +28,27 @@ type productoResponse struct {
 	Descripcion *string `json:"descripcion"`
 }
 
-func (r productoRequest) validate() string {
+func (r productoRequest) validate() error {
 	switch {
 	case strings.TrimSpace(r.Nombre) == "":
-		return "el nombre es obligatorio"
+		return errors.New("el nombre es obligatorio")
 	case strings.TrimSpace(r.Categoria) == "":
-		return "la categoría es obligatoria"
+		return errors.New("la categoría es obligatoria")
 	case r.Precio < 0:
-		return "el precio no puede ser negativo"
+		return errors.New("el precio no puede ser negativo")
 	}
-	return ""
-}
-
-func (r productoRequest) precioStr() string {
-	return strconv.FormatFloat(r.Precio, 'f', 2, 64)
-}
-
-func (r productoRequest) descripcionNull() sql.NullString {
-	if r.Descripcion == nil {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: *r.Descripcion, Valid: true}
+	return nil
 }
 
 func toResponse(p sqlc.Producto) productoResponse {
 	precio, _ := strconv.ParseFloat(p.Precio, 64)
-	var desc *string
-	if p.Descripcion.Valid {
-		desc = &p.Descripcion.String
-	}
 	return productoResponse{
 		ID:          p.ID,
 		Nombre:      p.Nombre,
 		Categoria:   p.Categoria,
 		Precio:      precio,
-		Descripcion: desc,
+		Descripcion: nullToPtr(p.Descripcion),
 	}
-}
-
-// ---------- helpers ----------
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
-}
-
-func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
-}
-
-func pathID(r *http.Request) (int32, error) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 32)
-	return int32(id), err
 }
 
 // decodeProducto lee y valida el body; si hay error ya responde al cliente.
@@ -94,8 +58,8 @@ func decodeProducto(w http.ResponseWriter, r *http.Request) (productoRequest, bo
 		writeError(w, http.StatusBadRequest, "JSON inválido")
 		return req, false
 	}
-	if msg := req.validate(); msg != "" {
-		writeError(w, http.StatusBadRequest, msg)
+	if err := req.validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return req, false
 	}
 	return req, true
@@ -103,7 +67,7 @@ func decodeProducto(w http.ResponseWriter, r *http.Request) (productoRequest, bo
 
 // ---------- handlers ----------
 
-func (a *API) createProducto(w http.ResponseWriter, r *http.Request) {
+func (a *API) CreateProducto(w http.ResponseWriter, r *http.Request) {
 	req, ok := decodeProducto(w, r)
 	if !ok {
 		return
@@ -111,8 +75,8 @@ func (a *API) createProducto(w http.ResponseWriter, r *http.Request) {
 	p, err := a.q.CreateProducto(r.Context(), sqlc.CreateProductoParams{
 		Nombre:      req.Nombre,
 		Categoria:   req.Categoria,
-		Precio:      req.precioStr(),
-		Descripcion: req.descripcionNull(),
+		Precio:      floatToStr(req.Precio),
+		Descripcion: toNullString(req.Descripcion),
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -121,7 +85,7 @@ func (a *API) createProducto(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toResponse(p))
 }
 
-func (a *API) listProductos(w http.ResponseWriter, r *http.Request) {
+func (a *API) ListProductos(w http.ResponseWriter, r *http.Request) {
 	ps, err := a.q.ListProductos(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -134,7 +98,7 @@ func (a *API) listProductos(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (a *API) getProducto(w http.ResponseWriter, r *http.Request) {
+func (a *API) GetProducto(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "id inválido")
@@ -152,7 +116,7 @@ func (a *API) getProducto(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toResponse(p))
 }
 
-func (a *API) updateProducto(w http.ResponseWriter, r *http.Request) {
+func (a *API) UpdateProducto(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "id inválido")
@@ -171,8 +135,8 @@ func (a *API) updateProducto(w http.ResponseWriter, r *http.Request) {
 		ID:          id,
 		Nombre:      req.Nombre,
 		Categoria:   req.Categoria,
-		Precio:      req.precioStr(),
-		Descripcion: req.descripcionNull(),
+		Precio:      floatToStr(req.Precio),
+		Descripcion: toNullString(req.Descripcion),
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "producto no encontrado")
@@ -185,7 +149,7 @@ func (a *API) updateProducto(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toResponse(p))
 }
 
-func (a *API) deleteProducto(w http.ResponseWriter, r *http.Request) {
+func (a *API) DeleteProducto(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "id inválido")

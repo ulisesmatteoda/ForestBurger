@@ -24,8 +24,6 @@ up: down .env
 
 wait-db: up
 	@echo "Esperando a que la base esté lista..."
-wait-db: up
-	@echo "Esperando a que la base esté lista..."
 	@until docker compose exec -T database sh -c 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'; do sleep 1; done
 
 # Ejecución de tests -----------------------------------------------
