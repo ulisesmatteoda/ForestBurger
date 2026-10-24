@@ -27,7 +27,9 @@ type itemRequest struct {
 	IDProducto   int32              `json:"id_producto"`
 	Cantidad     int32              `json:"cantidad"`
 	Aclaraciones *string            `json:"aclaraciones"` // texto libre sin precio (ej: "sin cebolla"); puede ser null
+	Tamano 		*string 			`json:"tamano"` // "simple" o "doble"; null si el producto no tiene tamaño
 	Extras       []extraItemRequest `json:"extras"`       // puede venir vacío
+
 }
 
 // extraItemResponse es un extra guardado en un item del pedido.
@@ -45,6 +47,7 @@ type itemResponse struct {
 	Cantidad       int32               `json:"cantidad"`
 	PrecioUnitario float64             `json:"precio_unitario"`
 	Aclaraciones   *string             `json:"aclaraciones"`
+	Tamano *string `json:"tamano"`
 	Extras         []extraItemResponse `json:"extras"`
 }
 
@@ -99,6 +102,9 @@ func (r pedidoRequest) validate() error {
 	for _, it := range r.Items {
 		if it.Cantidad < 1 {
 			return errors.New("La cantidad tiene que ser al menos 1")
+		}
+		if it.Tamano != nil && *it.Tamano != "simple" && *it.Tamano != "doble" {
+			return errors.New("Elegí simple o doble")
 		}
 		for _, ex := range it.Extras {
 			if ex.Cantidad < 1 {
@@ -181,6 +187,7 @@ func (a *API) detallePedido(ctx context.Context, p sqlc.Pedido) (pedidoDetalleRe
 			Cantidad:       it.Cantidad,
 			PrecioUnitario: precio,
 			Aclaraciones:   nullToPtr(it.Aclaraciones),
+			Tamano:         nullToPtr(it.Tamano),
 			Extras:         extrasOut,
 		})
 	}
@@ -214,7 +221,7 @@ func (a *API) CreatePedido(w http.ResponseWriter, r *http.Request) {
 	// Recorrer el carrito: guardar cada producto y sus extras, e ir sumando.
 	var total float64
 
-	for _, it := range req.Items {
+		for _, it := range req.Items {
 		// El precio se saca de la base, nunca del cliente.
 		producto, err := a.q.GetProducto(ctx, it.IDProducto)
 		if err != nil {
@@ -222,24 +229,39 @@ func (a *API) CreatePedido(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Elegir el precio según el tamaño. Si el producto tiene precio doble, el tamaño es obligatorio;
+		// si no lo tiene (bebidas), no puede venir tamaño.
+		precioUnitario := producto.Precio
+		tieneDoble := producto.PrecioDoble.Valid
+		switch {
+		case tieneDoble && it.Tamano == nil:
+			writeError(w, http.StatusBadRequest, "Elegí simple o doble para "+producto.Nombre)
+			return
+		case !tieneDoble && it.Tamano != nil:
+			writeError(w, http.StatusBadRequest, producto.Nombre+" no tiene tamaño")
+			return
+		case tieneDoble && *it.Tamano == "doble":
+			precioUnitario = producto.PrecioDoble.String
+		}
+
 		// Crear el item del pedido
 		item, err := a.q.CreateItemPedido(ctx, sqlc.CreateItemPedidoParams{
 			IDPedido:       pedido.ID,
 			IDProducto:     it.IDProducto,
 			Cantidad:       it.Cantidad,
-			PrecioUnitario: producto.Precio,
+			PrecioUnitario: precioUnitario,
 			Aclaraciones:   toNullString(it.Aclaraciones),
+			Tamano:         toNullString(it.Tamano),
 		})
-
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
-		// Calcular el total: precio del producto * cantidad + extras
-		precio, _ := strconv.ParseFloat(producto.Precio, 64)
+		precio, _ := strconv.ParseFloat(precioUnitario, 64)
 		total += precio * float64(it.Cantidad)
 
+		// Guardar los extras del item y sumarlos al total.
 		for _, ex := range it.Extras {
 			extra, err := a.q.GetExtra(ctx, ex.IDExtra)
 			if err != nil {
@@ -284,6 +306,7 @@ func (a *API) ListPedidos(w http.ResponseWriter, r *http.Request) {
 	pedidos, err := a.q.ListPedidos(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 
 	out := make([]pedidoResponse, 0, len(pedidos))

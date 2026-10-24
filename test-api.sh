@@ -28,10 +28,10 @@ done
 echo "Servidor listo."
 
 echo "----------------------------------------"
-echo "TEST 1: POST /api/productos (Crear producto)"
+echo "TEST 1: POST /api/productos (Crear producto con precio doble)"
 RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$API_URL" \
     -H "Content-Type: application/json" \
-    -d '{"nombre":"Forest Doble","categoria":"hamburguesa","precio":9500.50,"descripcion":"Doble carne y cheddar"}')
+    -d '{"nombre":"Forest Doble","categoria":"hamburguesa","precio":9500.50,"precio_doble":11500,"descripcion":"Doble carne y cheddar"}')
 BODY=$(echo "$RESPONSE" | head -n 1)
 STATUS=$(echo "$RESPONSE" | tail -n 1)
 echo "Respuesta ($STATUS): $BODY"
@@ -39,9 +39,13 @@ if [ "$STATUS" -ne 201 ]; then
     echo "ERROR: Se esperaba status 201 y se obtuvo $STATUS"
     exit 1
 fi
+if ! echo "$BODY" | grep -q '"precio_doble":11500'; then
+    echo "ERROR: Se esperaba precio_doble 11500"
+    exit 1
+fi
 # Extraer el ID generado (usando grep/sed sin depender de jq)
 PROD_ID=$(echo "$BODY" | grep -o '"id":[0-9]*' | head -n 1 | cut -d':' -f2)
-echo "-> Producto creado con ID=$PROD_ID (OK)"
+echo "-> Producto creado con ID=$PROD_ID y precio doble (OK)"
 
 echo "----------------------------------------"
 echo "TEST 2: GET /api/productos (Listar productos)"
@@ -71,12 +75,16 @@ echo "----------------------------------------"
 echo "TEST 4: PUT /api/productos/$PROD_ID (Actualizar producto)"
 RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT "$API_URL/$PROD_ID" \
     -H "Content-Type: application/json" \
-    -d '{"nombre":"Forest Triple","categoria":"hamburguesa","precio":11500.00,"descripcion":"Triple carne, bacon y cheddar"}')
+    -d '{"nombre":"Forest Triple","categoria":"hamburguesa","precio":11500.00,"precio_doble":13500,"descripcion":"Triple carne, bacon y cheddar"}')
 BODY=$(echo "$RESPONSE" | head -n 1)
 STATUS=$(echo "$RESPONSE" | tail -n 1)
 echo "Respuesta ($STATUS): $BODY"
 if [ "$STATUS" -ne 200 ]; then
     echo "ERROR: Se esperaba status 200 y se obtuvo $STATUS"
+    exit 1
+fi
+if ! echo "$BODY" | grep -q '"precio_doble":13500'; then
+    echo "ERROR: Se esperaba precio_doble 13500 tras actualizar"
     exit 1
 fi
 echo "-> Producto actualizado correctamente (OK)"
@@ -144,7 +152,7 @@ echo "----------------------------------------"
 echo "TEST 9: POST /api/productos (Crear productos para el pedido)"
 RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$API_URL" \
     -H "Content-Type: application/json" \
-    -d '{"nombre":"Forest Doble","categoria":"hamburguesa","precio":9500,"descripcion":"Doble carne y cheddar"}')
+    -d '{"nombre":"Forest Doble","categoria":"hamburguesa","precio":9500,"precio_doble":11500,"descripcion":"Doble carne y cheddar"}')
 BODY=$(echo "$RESPONSE" | head -n 1)
 STATUS=$(echo "$RESPONSE" | tail -n 1)
 if [ "$STATUS" -ne 201 ]; then
@@ -153,6 +161,7 @@ if [ "$STATUS" -ne 201 ]; then
 fi
 HAMB_ID=$(echo "$BODY" | grep -o '"id":[0-9]*' | head -n 1 | cut -d':' -f2)
 
+# Las papas no tienen versión doble: precio_doble queda null
 RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -d '{"nombre":"Papas","categoria":"acompañamiento","precio":3000}')
@@ -162,12 +171,16 @@ if [ "$STATUS" -ne 201 ]; then
     echo "ERROR: Se esperaba status 201 y se obtuvo $STATUS"
     exit 1
 fi
+if ! echo "$BODY" | grep -q '"precio_doble":null'; then
+    echo "ERROR: Las papas deberían tener precio_doble null"
+    exit 1
+fi
 PAPAS_ID=$(echo "$BODY" | grep -o '"id":[0-9]*' | head -n 1 | cut -d':' -f2)
 echo "-> Productos creados: Forest Doble ID=$HAMB_ID, Papas ID=$PAPAS_ID (OK)"
 
 echo "----------------------------------------"
-echo "TEST 10: POST /api/pedidos (Crear pedido con productos y extras)"
-# Total esperado: 2 x 9500 + 1 x 500 + 2 x 800 + 1 x 3000 = 24100
+echo "TEST 10: POST /api/pedidos (Crear pedido con tamaño doble y extras)"
+# Total esperado: 2 x 11500 (doble) + 1 x 500 (cheddar) + 2 x 800 (bacon) + 1 x 3000 (papas) = 28100
 RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/pedidos" \
     -H "Content-Type: application/json" \
     -d '{
@@ -177,7 +190,7 @@ RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/pedidos" \
       "forma_pago": "efectivo",
       "notas": "Tocar timbre 2B",
       "items": [
-        {"id_producto": '"$HAMB_ID"', "cantidad": 2, "aclaraciones": "sin cebolla",
+        {"id_producto": '"$HAMB_ID"', "cantidad": 2, "tamano": "doble", "aclaraciones": "sin cebolla",
          "extras": [{"id_extra": '"$CHEDDAR_ID"', "cantidad": 1}, {"id_extra": '"$BACON_ID"', "cantidad": 2}]},
         {"id_producto": '"$PAPAS_ID"', "cantidad": 1, "extras": []}
       ]
@@ -189,8 +202,8 @@ if [ "$STATUS" -ne 201 ]; then
     echo "ERROR: Se esperaba status 201 y se obtuvo $STATUS"
     exit 1
 fi
-if ! echo "$BODY" | grep -q '"total":24100'; then
-    echo "ERROR: Se esperaba total 24100"
+if ! echo "$BODY" | grep -q '"total":28100'; then
+    echo "ERROR: Se esperaba total 28100"
     exit 1
 fi
 if ! echo "$BODY" | grep -q '"estado":"pendiente"'; then
@@ -198,7 +211,7 @@ if ! echo "$BODY" | grep -q '"estado":"pendiente"'; then
     exit 1
 fi
 PEDIDO_ID=$(echo "$BODY" | grep -o '"id":[0-9]*' | head -n 1 | cut -d':' -f2)
-echo "-> Pedido creado con ID=$PEDIDO_ID, total 24100 y estado pendiente (OK)"
+echo "-> Pedido creado con ID=$PEDIDO_ID, total 28100 y estado pendiente (OK)"
 
 echo "----------------------------------------"
 echo "TEST 11: GET /api/pedidos (Listar pedidos)"
@@ -226,7 +239,15 @@ if ! echo "$BODY" | grep -q '"nombre_producto":"Forest Doble"' || ! echo "$BODY"
     echo "ERROR: El detalle no trae los productos y extras con nombre"
     exit 1
 fi
-echo "-> Detalle del pedido con items y extras correcto (OK)"
+if ! echo "$BODY" | grep -q '"tamano":"doble"' || ! echo "$BODY" | grep -q '"precio_unitario":11500'; then
+    echo "ERROR: El item doble no se guardó con su tamaño y precio doble"
+    exit 1
+fi
+if ! echo "$BODY" | grep -q '"tamano":null'; then
+    echo "ERROR: Las papas deberían tener tamano null"
+    exit 1
+fi
+echo "-> Detalle del pedido con items, tamaños y extras correcto (OK)"
 
 echo "----------------------------------------"
 echo "TEST 13: PUT /api/pedidos/$PEDIDO_ID/estado (Cambiar estado)"
@@ -253,6 +274,42 @@ if [ "$STATUS" -ne 400 ]; then
     exit 1
 fi
 echo "-> Pedido inválido rechazado correctamente (OK)"
+
+echo "----------------------------------------"
+echo "TEST 15: POST /api/pedidos con hamburguesa sin tamaño (Verificar 400)"
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/pedidos" \
+    -H "Content-Type: application/json" \
+    -d '{"nombre_cliente":"Ulises","tipo_entrega":"take_away","forma_pago":"efectivo","items":[{"id_producto":'"$HAMB_ID"',"cantidad":1}]}')
+echo "Status recibido: $STATUS"
+if [ "$STATUS" -ne 400 ]; then
+    echo "ERROR: Se esperaba status 400 y se obtuvo $STATUS"
+    exit 1
+fi
+echo "-> Hamburguesa sin tamaño rechazada correctamente (OK)"
+
+echo "----------------------------------------"
+echo "TEST 16: POST /api/pedidos con papas con tamaño (Verificar 400)"
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/pedidos" \
+    -H "Content-Type: application/json" \
+    -d '{"nombre_cliente":"Ulises","tipo_entrega":"take_away","forma_pago":"efectivo","items":[{"id_producto":'"$PAPAS_ID"',"cantidad":1,"tamano":"doble"}]}')
+echo "Status recibido: $STATUS"
+if [ "$STATUS" -ne 400 ]; then
+    echo "ERROR: Se esperaba status 400 y se obtuvo $STATUS"
+    exit 1
+fi
+echo "-> Producto sin tamaño pedido como doble rechazado correctamente (OK)"
+
+echo "----------------------------------------"
+echo "TEST 17: POST /api/pedidos con tamaño inválido (Verificar 400)"
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/pedidos" \
+    -H "Content-Type: application/json" \
+    -d '{"nombre_cliente":"Ulises","tipo_entrega":"take_away","forma_pago":"efectivo","items":[{"id_producto":'"$HAMB_ID"',"cantidad":1,"tamano":"triple"}]}')
+echo "Status recibido: $STATUS"
+if [ "$STATUS" -ne 400 ]; then
+    echo "ERROR: Se esperaba status 400 y se obtuvo $STATUS"
+    exit 1
+fi
+echo "-> Tamaño inválido rechazado correctamente (OK)"
 
 echo "========================================"
 echo "TODOS LOS TESTS DE LA API PASARON CON EXITO"

@@ -58,3 +58,20 @@ func pathID(r *http.Request) (int32, error) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 32)
 	return int32(id), err
 }
+
+// floatPtrToNull pasa un precio opcional del JSON (nil si no vino) al DECIMAL nullable de sqlc.
+func floatPtrToNull(f *float64) sql.NullString {
+	if f == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: floatToStr(*f), Valid: true}
+}
+
+// nullToFloatPtr hace lo inverso: de DECIMAL nullable a *float64, para que en el JSON salga null.
+func nullToFloatPtr(ns sql.NullString) *float64 {
+	if !ns.Valid {
+		return nil
+	}
+	f, _ := strconv.ParseFloat(ns.String, 64)
+	return &f
+}

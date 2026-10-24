@@ -3,6 +3,7 @@ CREATE TABLE producto (
     nombre VARCHAR(255) NOT NULL,
     categoria VARCHAR(50) NOT NULL,
     precio DECIMAL(10,2) NOT NULL,
+    precio_doble DECIMAL(10,2), 
     descripcion TEXT
 );
 
@@ -27,7 +28,9 @@ CREATE TABLE item_pedido (
     id_producto INTEGER NOT NULL REFERENCES producto(id),
     cantidad INTEGER NOT NULL,
     precio_unitario DECIMAL(10,2) NOT NULL,
-    aclaraciones TEXT
+    aclaraciones TEXT,
+    tamano VARCHAR(10)
+        CHECK (tamano IN ('simple', 'doble'))
 );
 
 CREATE TABLE extra (

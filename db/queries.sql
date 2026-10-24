@@ -1,7 +1,7 @@
 /* Producto */
 -- name: CreateProducto :one
-INSERT INTO producto (nombre, categoria, precio, descripcion)
-VALUES ($1, $2, $3, $4)
+INSERT INTO producto (nombre, categoria, precio, precio_doble, descripcion)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: GetProducto :one
@@ -12,7 +12,7 @@ SELECT * FROM producto ORDER BY categoria, nombre;
 
 -- name: UpdateProducto :one
 UPDATE producto
-SET nombre = $2, categoria = $3, precio = $4, descripcion = $5
+SET nombre = $2, categoria = $3, precio = $4, precio_doble = $5, descripcion = $6
 WHERE id = $1
 RETURNING *;
 
@@ -65,13 +65,13 @@ DELETE FROM extra WHERE id = $1;
 /* ItemPedido e  */
 
 -- name: CreateItemPedido :one
-INSERT INTO item_pedido (id_pedido, id_producto, cantidad, precio_unitario, aclaraciones)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO item_pedido (id_pedido, id_producto, cantidad, precio_unitario, aclaraciones, tamano)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: ListItemsByPedido :many
 SELECT ip.id, ip.id_producto, p.nombre AS nombre_producto,
-       ip.cantidad, ip.precio_unitario, ip.aclaraciones
+       ip.cantidad, ip.precio_unitario, ip.aclaraciones, ip.tamano
 FROM item_pedido ip
 JOIN producto p ON p.id = ip.id_producto
 WHERE ip.id_pedido = $1

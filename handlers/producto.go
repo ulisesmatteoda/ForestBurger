@@ -17,6 +17,7 @@ type productoRequest struct {
 	Nombre      string  `json:"nombre"`
 	Categoria   string  `json:"categoria"`
 	Precio      float64 `json:"precio"`
+	PrecioDoble *float64 `json:"precio_doble"` // null si el producto no tiene versión doble
 	Descripcion *string `json:"descripcion"`
 }
 
@@ -25,6 +26,7 @@ type productoResponse struct {
 	Nombre      string  `json:"nombre"`
 	Categoria   string  `json:"categoria"`
 	Precio      float64 `json:"precio"`
+	PrecioDoble *float64 `json:"precio_doble"`
 	Descripcion *string `json:"descripcion"`
 }
 
@@ -36,6 +38,8 @@ func (r productoRequest) validate() error {
 		return errors.New("la categoría es obligatoria")
 	case r.Precio < 0:
 		return errors.New("el precio no puede ser negativo")
+	case r.PrecioDoble != nil && *r.PrecioDoble < 0:
+		return errors.New("el precio doble no puede ser negativo")
 	}
 	return nil
 }
@@ -47,6 +51,7 @@ func toResponse(p sqlc.Producto) productoResponse {
 		Nombre:      p.Nombre,
 		Categoria:   p.Categoria,
 		Precio:      precio,
+		PrecioDoble: nullToFloatPtr(p.PrecioDoble),
 		Descripcion: nullToPtr(p.Descripcion),
 	}
 }
@@ -76,6 +81,7 @@ func (a *API) CreateProducto(w http.ResponseWriter, r *http.Request) {
 		Nombre:      req.Nombre,
 		Categoria:   req.Categoria,
 		Precio:      floatToStr(req.Precio),
+		PrecioDoble: floatPtrToNull(req.PrecioDoble),
 		Descripcion: toNullString(req.Descripcion),
 	})
 	if err != nil {
@@ -136,6 +142,7 @@ func (a *API) UpdateProducto(w http.ResponseWriter, r *http.Request) {
 		Nombre:      req.Nombre,
 		Categoria:   req.Categoria,
 		Precio:      floatToStr(req.Precio),
+		PrecioDoble: floatPtrToNull(req.PrecioDoble),
 		Descripcion: toNullString(req.Descripcion),
 	})
 	if errors.Is(err, sql.ErrNoRows) {
