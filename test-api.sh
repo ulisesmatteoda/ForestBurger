@@ -3,6 +3,10 @@ set -e
 
 API_URL="http://localhost:8080/api/productos"
 BASE_URL="http://localhost:8080/api"
+# Archivos de prueba para la subida de imágenes (se borran al terminar)
+TMP_DIR=$(mktemp -d)
+echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > "$TMP_DIR/foto.png"
+echo "esto no es una imagen" > "$TMP_DIR/texto.txt"
 
 echo "==> 1. Compilando y levantando el servidor de la API..."
 go build -o forestburger-server .
@@ -14,6 +18,8 @@ cleanup() {
     echo "==> Deteniendo servidor (PID $SERVER_PID)..."
     kill $SERVER_PID 2>/dev/null || true
     rm -f forestburger-server
+    rm -rf "$TMP_DIR"
+    [ -n "$HAMB_ID" ] && rm -f uploads/"$HAMB_ID"-*
 }
 trap cleanup EXIT
 
@@ -310,6 +316,72 @@ if [ "$STATUS" -ne 400 ]; then
     exit 1
 fi
 echo "-> Tamaño inválido rechazado correctamente (OK)"
+
+echo "----------------------------------------"
+echo "TEST 18: POST /api/productos/$HAMB_ID/imagen (Subir foto)"
+RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$API_URL/$HAMB_ID/imagen" -F "imagen=@$TMP_DIR/foto.png")
+BODY=$(echo "$RESPONSE" | head -n 1)
+STATUS=$(echo "$RESPONSE" | tail -n 1)
+echo "Respuesta ($STATUS): $BODY"
+if [ "$STATUS" -ne 200 ]; then
+    echo "ERROR: Se esperaba status 200 y se obtuvo $STATUS"
+    exit 1
+fi
+IMG_URL=$(echo "$BODY" | grep -o '"imagen_url":"[^"]*"' | cut -d'"' -f4)
+if [[ "$IMG_URL" != /uploads/$HAMB_ID-*.png ]]; then
+    echo "ERROR: imagen_url inesperada: $IMG_URL"
+    exit 1
+fi
+echo "-> Foto subida y guardada en $IMG_URL (OK)"
+
+echo "----------------------------------------"
+echo "TEST 19: GET $IMG_URL (La foto se puede ver)"
+RESULT=$(curl -s -o /dev/null -w "%{http_code} %{content_type}" "http://localhost:8080$IMG_URL")
+echo "Resultado: $RESULT"
+if [ "$RESULT" != "200 image/png" ]; then
+    echo "ERROR: Se esperaba '200 image/png' y se obtuvo '$RESULT'"
+    exit 1
+fi
+echo "-> La foto se sirve correctamente (OK)"
+
+echo "----------------------------------------"
+echo "TEST 20: POST /api/productos/$HAMB_ID/imagen (Reemplazar foto borra la anterior)"
+sleep 1 # que la nueva tenga otro nombre
+RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$API_URL/$HAMB_ID/imagen" -F "imagen=@$TMP_DIR/foto.png")
+BODY=$(echo "$RESPONSE" | head -n 1)
+STATUS=$(echo "$RESPONSE" | tail -n 1)
+NUEVA_URL=$(echo "$BODY" | grep -o '"imagen_url":"[^"]*"' | cut -d'"' -f4)
+echo "Nueva URL ($STATUS): $NUEVA_URL"
+if [ "$STATUS" -ne 200 ] || [ "$NUEVA_URL" = "$IMG_URL" ]; then
+    echo "ERROR: Se esperaba una URL nueva"
+    exit 1
+fi
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080$IMG_URL")
+if [ "$STATUS" -ne 404 ]; then
+    echo "ERROR: La foto vieja debería haberse borrado (status $STATUS)"
+    exit 1
+fi
+echo "-> Foto reemplazada y la anterior borrada (OK)"
+
+echo "----------------------------------------"
+echo "TEST 21: POST /api/productos/$HAMB_ID/imagen con un archivo que no es imagen (Verificar 400)"
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/$HAMB_ID/imagen" -F "imagen=@$TMP_DIR/texto.txt")
+echo "Status recibido: $STATUS"
+if [ "$STATUS" -ne 400 ]; then
+    echo "ERROR: Se esperaba status 400 y se obtuvo $STATUS"
+    exit 1
+fi
+echo "-> Archivo inválido rechazado correctamente (OK)"
+
+echo "----------------------------------------"
+echo "TEST 22: POST /api/productos/999999/imagen (Verificar 404)"
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/999999/imagen" -F "imagen=@$TMP_DIR/foto.png")
+echo "Status recibido: $STATUS"
+if [ "$STATUS" -ne 404 ]; then
+    echo "ERROR: Se esperaba status 404 y se obtuvo $STATUS"
+    exit 1
+fi
+echo "-> Producto inexistente rechazado correctamente (OK)"
 
 echo "========================================"
 echo "TODOS LOS TESTS DE LA API PASARON CON EXITO"

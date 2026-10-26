@@ -4,7 +4,8 @@ CREATE TABLE producto (
     categoria VARCHAR(50) NOT NULL,
     precio DECIMAL(10,2) NOT NULL,
     precio_doble DECIMAL(10,2), 
-    descripcion TEXT
+    descripcion TEXT,
+    imagen_url TEXT
 );
 
 CREATE TABLE pedido (

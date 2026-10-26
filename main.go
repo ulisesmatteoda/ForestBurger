@@ -48,6 +48,8 @@ func main() {
 	mux.HandleFunc("GET /api/productos", api.ListProductos)
 	mux.HandleFunc("GET /api/productos/{id}", api.GetProducto)
 	mux.HandleFunc("PUT /api/productos/{id}", api.UpdateProducto)
+	mux.HandleFunc("POST /api/productos/{id}/imagen", api.UpdateImagenProducto)
+	mux.Handle("GET /uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 	mux.HandleFunc("DELETE /api/productos/{id}", api.DeleteProducto)
 
 	mux.HandleFunc("POST /api/extras", api.CreateExtra)

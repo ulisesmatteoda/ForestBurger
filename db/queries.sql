@@ -16,6 +16,10 @@ SET nombre = $2, categoria = $3, precio = $4, precio_doble = $5, descripcion = $
 WHERE id = $1
 RETURNING *;
 
+-- name: UpdateImagenProducto :one
+UPDATE producto SET imagen_url = $2 WHERE id = $1
+RETURNING *;
+
 -- name: DeleteProducto :exec
 DELETE FROM producto WHERE id = $1;
 

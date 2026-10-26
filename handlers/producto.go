@@ -7,6 +7,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"time"
 
 	sqlc "forestburger/db/sqlc"
 )
@@ -28,6 +33,7 @@ type productoResponse struct {
 	Precio      float64 `json:"precio"`
 	PrecioDoble *float64 `json:"precio_doble"`
 	Descripcion *string `json:"descripcion"`
+	ImagenURL   *string `json:"imagen_url"`
 }
 
 func (r productoRequest) validate() error {
@@ -53,6 +59,7 @@ func toResponse(p sqlc.Producto) productoResponse {
 		Precio:      precio,
 		PrecioDoble: nullToFloatPtr(p.PrecioDoble),
 		Descripcion: nullToPtr(p.Descripcion),
+		ImagenURL:   nullToPtr(p.ImagenUrl),
 	}
 }
 
@@ -154,6 +161,95 @@ func (a *API) UpdateProducto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toResponse(p))
+}
+
+// UpdateImagenProducto: POST /api/productos/{id}/imagen
+// Recibe la foto como multipart/form-data (campo "imagen"), la guarda en uploads/
+// y actualiza imagen_url del producto. La base guarda solo la ruta, nunca la imagen.
+func (a *API) UpdateImagenProducto(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "id inválido")
+		return
+	}
+
+	// El producto tiene que existir (y así sabemos si ya tenía una foto para borrarla).
+	p, err := a.q.GetProducto(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "producto no encontrado")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Limitar el tamaño a 5 MB antes de leer nada.
+	const maxTam = 5 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, maxTam)
+	if err := r.ParseMultipartForm(maxTam); err != nil {
+		writeError(w, http.StatusBadRequest, "La imagen no puede pesar más de 5 MB")
+		return
+	}
+	file, _, err := r.FormFile("imagen")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Falta la imagen")
+		return
+	}
+	defer file.Close()
+
+	// Ver qué es el archivo mirando su contenido, no la extensión (que se puede falsear).
+	buf := make([]byte, 512)
+	n, _ := file.Read(buf)
+	extensiones := map[string]string{"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+	ext, ok := extensiones[http.DetectContentType(buf[:n])]
+	if !ok {
+		writeError(w, http.StatusBadRequest, "La imagen tiene que ser JPG, PNG o WEBP")
+		return
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil { // volver al inicio para copiarlo entero
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Guardar con un nombre propio: id + timestamp. El timestamp hace que, si cambian la foto,
+	// el navegador no muestre la vieja guardada en caché.
+	if err := os.MkdirAll("uploads", 0755); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	nombre := fmt.Sprintf("%d-%d%s", id, time.Now().Unix(), ext)
+	dst, err := os.Create(filepath.Join("uploads", nombre))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := io.Copy(dst, file); err != nil {
+		dst.Close()
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	dst.Close()
+
+	// Guardar la ruta en la base.
+	actualizado, err := a.q.UpdateImagenProducto(r.Context(), sqlc.UpdateImagenProductoParams{
+		ID:        id,
+		ImagenUrl: sql.NullString{String: "/uploads/" + nombre, Valid: true},
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Si tenía una foto anterior (y no es el mismo archivo), borrarla para no acumular basura.
+	if p.ImagenUrl.Valid {
+		vieja := filepath.Base(p.ImagenUrl.String)
+		if vieja != nombre {
+			os.Remove(filepath.Join("uploads", vieja))
+		}
+	}
+
+	writeJSON(w, http.StatusOK, toResponse(actualizado))
 }
 
 func (a *API) DeleteProducto(w http.ResponseWriter, r *http.Request) {
