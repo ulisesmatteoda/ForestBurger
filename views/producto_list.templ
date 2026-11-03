@@ -1,0 +1,81 @@
+package views
+
+import (
+	"fmt"
+	"math"
+	"strconv"
+	"strings"
+
+	"forestburger/db/sqlc"
+)
+
+// ProductoList renderiza la tabla con todos los productos.
+templ ProductoList(productos []db.Producto) {
+	<section id="lista-productos" class="tabla-contenedor">
+		if len(productos) == 0 {
+			<p class="vacio">Todavía no hay productos. Cargá el primero con el formulario de abajo.</p>
+		} else {
+			<table class="tabla">
+				<thead>
+					<tr>
+						<th>PRODUCTO</th>
+						<th>CATEGORÍA</th>
+						<th>PRECIO</th>
+                        <th>PRECIO DOBLE</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, p := range productos {
+						<tr>
+							<td>
+								<div class="producto-nombre">{ p.Nombre }</div>
+								if p.Descripcion.Valid {
+									<div class="producto-desc">{ p.Descripcion.String }</div>
+								}
+							</td>
+							<td><span class="tag">{ etiquetaCategoria(p.Categoria) }</span></td>
+							<td class="precio">{ formatPrecio(p.Precio) }</td>
+                            <td class="precio">
+								if p.PrecioDoble.Valid {
+									{ formatPrecio(p.PrecioDoble.String) }
+								} else {
+									—
+								}
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		}
+	</section>
+}
+
+// formatPrecio pasa "14500.00" (como lo devuelve sqlc) a "$14.500". Muestra centavos solo si hay.
+func formatPrecio(s string) string {
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return "$" + s
+	}
+	entero := int64(f)
+	centavos := int64(math.Round((f - float64(entero)) * 100))
+	txt := strconv.FormatInt(entero, 10)
+	var b strings.Builder
+	for i, c := range txt {
+		if i > 0 && (len(txt)-i)%3 == 0 {
+			b.WriteByte('.')
+		}
+		b.WriteRune(c)
+	}
+	if centavos > 0 {
+		return fmt.Sprintf("$%s,%02d", b.String(), centavos)
+	}
+	return "$" + b.String()
+}
+
+// etiquetaCategoria muestra la categoría con mayúscula inicial ("hamburguesa" → "Hamburguesa").
+func etiquetaCategoria(c string) string {
+	if c == "" {
+		return c
+	}
+	return strings.ToUpper(c[:1]) + c[1:]
+}

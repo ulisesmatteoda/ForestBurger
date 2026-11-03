@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import (
 	"database/sql"
@@ -15,13 +15,19 @@ type API struct {
 	q *sqlc.Queries
 }
 
+// NewAPI arma la API con las queries de sqlc (q queda privado al paquete).
+func NewAPI(q *sqlc.Queries) *API {
+	return &API{q: q}
+}
+
 // ---------- DTOs (lo que ve el cliente de la API) ----------
 
 type productoRequest struct {
-	Nombre      string  `json:"nombre"`
-	Categoria   string  `json:"categoria"`
-	Precio      float64 `json:"precio"`
-	Descripcion *string `json:"descripcion"`
+	Nombre      string   `json:"nombre"`
+	Categoria   string   `json:"categoria"`
+	Precio      float64  `json:"precio"`
+	PrecioDoble *float64 `json:"precio_doble"` // nil si no tiene versión doble
+	Descripcion *string  `json:"descripcion"`
 }
 
 type productoResponse struct {
@@ -40,6 +46,9 @@ func (r productoRequest) validate() string {
 		return "la categoría es obligatoria"
 	case r.Precio < 0:
 		return "el precio no puede ser negativo"
+		// dentro del switch de validate()
+	case r.PrecioDoble != nil && *r.PrecioDoble < 0:
+		return "el precio doble no puede ser negativo"
 	}
 	return ""
 }
@@ -68,6 +77,13 @@ func toResponse(p sqlc.Producto) productoResponse {
 		Precio:      precio,
 		Descripcion: desc,
 	}
+}
+
+func (r productoRequest) precioDobleNull() sql.NullString {
+	if r.PrecioDoble == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: strconv.FormatFloat(*r.PrecioDoble, 'f', 2, 64), Valid: true}
 }
 
 // ---------- helpers ----------

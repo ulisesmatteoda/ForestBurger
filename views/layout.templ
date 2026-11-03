@@ -1,0 +1,38 @@
+package views
+
+// Layout es la estructura base: barra lateral + contenido.
+templ Layout(titulo string) {
+	<!DOCTYPE html>
+	<html lang="es">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ titulo } · ForestBurger</title>
+			<link rel="preconnect" href="https://fonts.googleapis.com"/>
+			<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Semi+Condensed:wght@700;800&display=swap" rel="stylesheet"/>
+			<link rel="stylesheet" href="/static/styles.css"/>
+		</head>
+		<body>
+			<div class="app">
+				<aside class="sidebar">
+					<div class="sidebar-marca">
+						//@Logo()
+						<span class="marca">FORESTBURGER</span>
+					</div>
+					<span class="sidebar-etiqueta">PANEL DEL LOCAL</span>
+					<nav class="sidebar-nav">
+						<a href="/" class="nav-item activo">Productos</a>
+					</nav>
+				</aside>
+				<main class="contenido">
+					{ children... }
+				</main>
+			</div>
+		</body>
+	</html>
+}
+
+// Logo son los pinos de la marca. Toma el color del texto (currentColor).
+/*templ Logo() {
+	<img class="logo" src="/static/img/logo.svg" alt="ForestBurger"/>
+}*/

@@ -1,0 +1,58 @@
+package views
+
+// FormProducto son los datos del formulario. Se usan para volver a llenarlo
+// si hubo un error, así el usuario no pierde lo que escribió.
+type FormProducto struct {
+	Nombre      string
+	Categoria   string
+	Precio      string
+	PrecioDoble string
+	Descripcion string
+	Error       string
+}
+
+var categorias = []struct{ Valor, Label string }{
+	{"hamburguesa", "Hamburguesa"},
+	{"veggie", "Veggie"},
+	{"acompañamiento", "Acompañamiento"},
+	{"bebida", "Bebida"},
+}
+
+// ProductoForm renderiza el formulario de nuevo producto. Hace POST /productos (estilo clásico).
+templ ProductoForm(f FormProducto) {
+	<section id="nuevo" class="form-seccion">
+		<h2>NUEVO PRODUCTO</h2>
+		<form method="post" action="/productos" class="form">
+			if f.Error != "" {
+				<p class="error" role="alert">{ f.Error }</p>
+			}
+			<div class="campo">
+				<label for="nombre">Nombre</label>
+				<input id="nombre" name="nombre" type="text" value={ f.Nombre } required/>
+			</div>
+			<fieldset class="campo">
+				<legend class="campo-label">Categoría</legend>
+				<div class="chips">
+					for i, c := range categorias {
+						<label class="chip">
+							<input type="radio" name="categoria" value={ c.Valor } checked?={ f.Categoria == c.Valor || (f.Categoria == "" && i == 0) }/>
+							{ c.Label }
+						</label>
+					}
+				</div>
+			</fieldset>
+			<div class="campo">
+				<label for="precio">Precio</label>
+				<input id="precio" name="precio" type="number" min="0" step="0.01" value={ f.Precio } required/>
+			</div>
+			<div class="campo">
+				<label for="descripcion">Descripción</label>
+				<textarea id="descripcion" name="descripcion" rows="3">{ f.Descripcion }</textarea>
+			</div>
+			<div class="form-acciones">
+				<button type="submit" class="boton boton-primario">GUARDAR PRODUCTO</button>
+				<button type="reset" class="boton boton-secundario">LIMPIAR</button>
+			</div>
+		</form>
+	</section>
+}

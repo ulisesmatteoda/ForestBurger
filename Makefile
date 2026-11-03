@@ -9,6 +9,7 @@ all: test
 
 generate:
 	@sqlc generate
+	@templ generate
 
 build: generate
 	@go build ./...
@@ -22,8 +23,6 @@ down:
 up: down .env
 	@docker compose up -d
 
-wait-db: up
-	@echo "Esperando a que la base esté lista..."
 wait-db: up
 	@echo "Esperando a que la base esté lista..."
 	@until docker compose exec -T database sh -c 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'; do sleep 1; done

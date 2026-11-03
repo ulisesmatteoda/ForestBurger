@@ -1,0 +1,18 @@
+package views
+
+import "forestburger/db/sqlc"
+
+// IndexPage es la página principal: lista de productos + formulario.
+templ IndexPage(productos []db.Producto, form FormProducto) {
+	@Layout("Productos") {
+		<header class="encabezado">
+			<div>
+				<h1>PRODUCTOS</h1>
+				<p class="subtitulo">Lo que cargues acá aparece en el menú de la web.</p>
+			</div>
+			<a href="#nuevo" class="boton boton-primario">+ NUEVO PRODUCTO</a>
+		</header>
+		@ProductoList(productos)
+		@ProductoForm(form)
+	}
+}

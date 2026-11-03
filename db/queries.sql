@@ -1,6 +1,6 @@
 -- name: CreateProducto :one
-INSERT INTO producto (nombre, categoria, precio, descripcion)
-VALUES ($1, $2, $3, $4)
+INSERT INTO producto (nombre, categoria, precio, precio_doble, descripcion)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: GetProducto :one

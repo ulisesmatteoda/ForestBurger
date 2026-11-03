@@ -2,3 +2,6 @@
 *.env
 
 db/sqlc/*.go
+
+views/*_templ.go
+uploads/*

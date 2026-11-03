@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	handlers "forestburger/handlers"
 	sqlc "forestburger/db/sqlc"
 
 	_ "github.com/lib/pq"
@@ -35,22 +36,23 @@ func main() {
 	// Instancia del repositorio generado por sqlc.
 	queries := sqlc.New(conn)
 	// Instancio api para llamar los metodos de endpoints
-	api := &API{queries}
+	api := handlers.NewAPI(queries)
 
 	// Router: acá se registran los handlers de la API, que reciben queries.
 	mux := http.NewServeMux()
-	mux.Handle("GET /", http.FileServer(http.Dir("static")))
-	_ = queries // se usa en los handlers del paso 2
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	mux.HandleFunc("GET /{$}", api.Index)
+	mux.HandleFunc("POST /productos", api.CrearProducto)
 
 	// Probamos los endpoints
 	// VER PARA HACER EN UN METODO APARTE PARA ASI TENER MAS LIMPIA ESTA PARTE DE CODIGO
-
+	/*
 	mux.HandleFunc("POST /api/productos", api.createProducto)
 	mux.HandleFunc("GET /api/productos", api.listProductos)
 	mux.HandleFunc("GET /api/productos/{id}", api.getProducto)
 	mux.HandleFunc("PUT /api/productos/{id}", api.updateProducto)
 	mux.HandleFunc("DELETE /api/productos/{id}", api.deleteProducto)
-
+	*/
 	log.Println("Servidor escuchando en http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }
