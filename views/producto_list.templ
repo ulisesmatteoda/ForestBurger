@@ -11,43 +11,128 @@ import (
 
 // ProductoList renderiza la tabla con todos los productos.
 templ ProductoList(productos []db.Producto) {
-	<section id="lista-productos" class="tabla-contenedor">
-		if len(productos) == 0 {
-			<p class="vacio">Todavía no hay productos. Cargá el primero con el formulario de abajo.</p>
-		} else {
-			<table class="tabla">
-				<thead>
-					<tr>
-						<th>PRODUCTO</th>
-						<th>CATEGORÍA</th>
-						<th>PRECIO</th>
+    <section id="lista-productos" class="tabla-contenedor">
+        if len(productos) == 0 {
+            <p class="vacio">Todavía no hay productos. Cargá el primero con el formulario de abajo.</p>
+        } else {
+            <table class="tabla">
+                <thead>
+                    <tr>
+                        <th>PRODUCTO</th>
+                        <th>CATEGORÍA</th>
+                        <th>PRECIO</th>
                         <th>PRECIO DOBLE</th>
-					</tr>
-				</thead>
-				<tbody>
-					for _, p := range productos {
-						<tr>
-							<td>
-								<div class="producto-nombre">{ p.Nombre }</div>
-								if p.Descripcion.Valid {
-									<div class="producto-desc">{ p.Descripcion.String }</div>
-								}
-							</td>
-							<td><span class="tag">{ etiquetaCategoria(p.Categoria) }</span></td>
-							<td class="precio">{ formatPrecio(p.Precio) }</td>
-                            <td class="precio">
-								if p.PrecioDoble.Valid {
-									{ formatPrecio(p.PrecioDoble.String) }
-								} else {
-									—
-								}
-							</td>
-						</tr>
-					}
-				</tbody>
-			</table>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    for _, p := range productos {
+                        @ProductoFila(p)
+                    }
+                </tbody>
+            </table>
+        }
+    </section>
+}
+
+// ProductoFila renderiza una fila de la tabla en modo lectura, con los botones Editar y Borrar.
+// También es lo que devuelve el servidor al guardar o cancelar una edición.
+templ ProductoFila(p db.Producto) {
+    <tr>
+        <td>
+            <div class="producto-nombre">{ p.Nombre }</div>
+            if p.Descripcion.Valid {
+                <div class="producto-desc">{ p.Descripcion.String }</div>
+            }
+        </td>
+        <td><span class="tag">{ etiquetaCategoria(p.Categoria) }</span></td>
+        <td class="precio">{ formatPrecio(p.Precio) }</td>
+        <td class="precio">
+            if p.PrecioDoble.Valid {
+                { formatPrecio(p.PrecioDoble.String) }
+            } else {
+                —
+            }
+        </td>
+        <td>
+            <div class="acciones">
+                <button
+                    class="btn-fila btn-editar"
+                    hx-get={ fmt.Sprintf("/productos/%d/editar", p.ID) }
+                    hx-target="closest tr"
+                    hx-swap="outerHTML"
+                >Editar</button>
+                <button
+                    class="btn-fila peligro btn-borrar"
+                    hx-delete={ fmt.Sprintf("/productos/%d", p.ID) }
+                    hx-target="closest tr"
+                    hx-swap="outerHTML"
+                    hx-confirm="¿Estás seguro?"
+                >Borrar</button>
+            </div>
+        </td>
+    </tr>
+}
+
+// ProductoFilaEditar renderiza la misma fila con inputs en cada celda. "Guardar" hace PUT con
+// los valores de la fila (hx-include) y "Cancelar" vuelve a pedir la fila en modo lectura.
+// Si el servidor rechaza los datos, devuelve esta misma fila con f.Error y lo que se escribió.
+templ ProductoFilaEditar(id int32, f FormProducto) {
+    <tr class="fila-edicion">
+        <td>
+            if f.Error != "" {
+                <p class="error" role="alert">{ f.Error }</p>
+            }
+            <input class="input-fila" type="text" name="nombre" value={ f.Nombre } aria-label="Nombre"/>
+            <textarea class="input-fila" name="descripcion" rows="2" aria-label="Descripción">{ f.Descripcion }</textarea>
+        </td>
+        <td>
+            <select class="input-fila" name="categoria" aria-label="Categoría">
+                for _, c := range categorias {
+                    <option value={ c.Valor } selected?={ f.Categoria == c.Valor }>{ c.Label }</option>
+                }
+                if f.Categoria != "" && !categoriaConocida(f.Categoria) {
+                    <option value={ f.Categoria } selected>{ f.Categoria }</option>
+                }
+            </select>
+        </td>
+        <td>
+            <input class="input-fila" type="number" name="precio" min="0" step="0.01" value={ f.Precio } aria-label="Precio simple"/>
+        </td>
+        <td>
+            <input class="input-fila" type="number" name="precio_doble" min="0" step="0.01" value={ f.PrecioDoble } aria-label="Precio doble"/>
+        </td>
+        <td>
+            <div class="acciones">
+                <button
+                    type="button"
+                    class="btn-fila btn-guardar"
+                    hx-put={ fmt.Sprintf("/productos/%d", id) }
+                    hx-include="closest tr"
+                    hx-target="closest tr"
+                    hx-swap="outerHTML"
+                >Guardar</button>
+                <button
+                    type="button"
+                    class="btn-fila btn-cancelar"
+                    hx-get={ fmt.Sprintf("/productos/%d", id) }
+                    hx-target="closest tr"
+                    hx-swap="outerHTML"
+                >Cancelar</button>
+            </div>
+        </td>
+    </tr>
+}
+
+// categoriaConocida indica si la categoría está entre las del formulario. Si un producto tiene una
+// categoría vieja o distinta, la edición la conserva en el select en lugar de cambiarla en silencio.
+func categoriaConocida(c string) bool {
+	for _, k := range categorias {
+		if k.Valor == c {
+			return true
 		}
-	</section>
+	}
+	return false
 }
 
 // formatPrecio pasa "14500.00" (como lo devuelve sqlc) a "$14.500". Muestra centavos solo si hay.

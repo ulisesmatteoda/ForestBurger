@@ -140,3 +140,19 @@ fieldset.campo { border: 0; padding: 0; margin: 0; }
 .ayuda { margin: -12px 0 0; font-size: 12px; color: var(--fb-texto-secundario); }
 @media (max-width: 600px) { .campos-fila { grid-template-columns: 1fr; } }
 legend.campo-label { padding: 0; margin-bottom: 6px; }
+/* ---------- Edición en la fila de la tabla ---------- */
+.btn-fila {
+  height: 36px; padding: 0 14px;
+  background: transparent; border: 1px solid var(--fb-borde); border-radius: var(--fb-radius-md);
+  color: var(--fb-crema); font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+}
+.btn-fila.peligro { border-color: var(--fb-peligro); color: var(--fb-peligro); }
+.input-fila {
+  width: 100%; box-sizing: border-box; padding: 8px 10px;
+  background: var(--fb-superficie); border: 1px solid var(--fb-borde); border-radius: var(--fb-radius-md);
+  color: var(--fb-texto); font-family: inherit; font-size: 15px;
+}
+.input-fila:focus { outline: 2px solid var(--fb-crema); outline-offset: 1px; }
+.fila-edicion td { vertical-align: top; }
+.fila-edicion .input-fila + .input-fila { margin-top: 8px; }
+.fila-edicion .error { margin: 0 0 8px; }

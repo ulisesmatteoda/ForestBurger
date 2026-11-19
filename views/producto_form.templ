@@ -22,7 +22,7 @@ var categorias = []struct{ Valor, Label string }{
 templ ProductoForm(f FormProducto) {
 	<section id="nuevo" class="form-seccion">
 		<h2>NUEVO PRODUCTO</h2>
-		<form method="post" action="/productos" class="form">
+		<form id="product-form" class="form" hx-post="/productos" hx-target="#lista-productos" hx-swap="outerHTML">
 			if f.Error != "" {
 				<p class="error" role="alert">{ f.Error }</p>
 			}
@@ -62,4 +62,10 @@ templ ProductoForm(f FormProducto) {
 			</div>
 		</form>
 	</section>
+}
+
+templ ProductoFormOOB(f FormProducto) {
+    <div id="product-form-container" hx-swap-oob="true">
+        @ProductoForm(f)
+    </div>
 }

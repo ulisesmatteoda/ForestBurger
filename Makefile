@@ -30,7 +30,7 @@ wait-db: up
 # Ejecución de tests -----------------------------------------------
 
 test: build wait-db
-	@DATABASE_URL="$(DB_URL)" go test -count=1 -v ./... ; \
+	@DATABASE_URL="$(DB_URL)" go test -p 1 -count=1 -v ./... ; \
 	status=$$? ; \
 	$(MAKE) --no-print-directory clean ; \
 	exit $$status

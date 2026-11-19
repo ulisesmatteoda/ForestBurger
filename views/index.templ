@@ -13,6 +13,8 @@ templ IndexPage(productos []db.Producto, form FormProducto) {
 			<a href="#nuevo" class="boton boton-primario">+ NUEVO PRODUCTO</a>
 		</header>
 		@ProductoList(productos)
-		@ProductoForm(form)
+		<div id="product-form-container">
+			@ProductoForm(form)
+		</div>
 	}
 }

@@ -1,0 +1,819 @@
+diff -ruN '--exclude=.git' '--exclude=*_templ.go' '--exclude=sqlc' orig_ForestBurger/Makefile proj/ForestBurger/Makefile
+--- orig_ForestBurger/Makefile	2026-11-19 19:08:05.249223290 +0000
++++ proj/ForestBurger/Makefile	2026-11-19 19:08:33.176151801 +0000
+@@ -30,7 +30,7 @@
+ # Ejecución de tests -----------------------------------------------
+ 
+ test: build wait-db
+-	@DATABASE_URL="$(DB_URL)" go test -count=1 -v ./... ; \
++	@DATABASE_URL="$(DB_URL)" go test -p 1 -count=1 -v ./... ; \
+ 	status=$$? ; \
+ 	$(MAKE) --no-print-directory clean ; \
+ 	exit $$status
+diff -ruN '--exclude=.git' '--exclude=*_templ.go' '--exclude=sqlc' orig_ForestBurger/README.md proj/ForestBurger/README.md
+--- orig_ForestBurger/README.md	2026-11-19 19:08:05.249235442 +0000
++++ proj/ForestBurger/README.md	2026-11-19 19:09:36.386532325 +0000
+@@ -79,9 +79,33 @@
+      make clean
+      ```
+ 
++## Rutas de la aplicación
++
++La interfaz se actualiza con HTMX: el servidor responde fragmentos de HTML (no JSON)
++y HTMX los coloca en la página sin recargarla.
++
++| Método y ruta                | Qué hace                                                                 |
++|------------------------------|--------------------------------------------------------------------------|
++| `GET /`                      | Página completa: lista de productos y formulario de alta                 |
++| `POST /productos`            | Crea un producto; devuelve la lista actualizada y el formulario vacío (OOB) |
++| `GET /productos/{id}/editar` | Devuelve la fila del producto en modo edición, con sus datos cargados    |
++| `PUT /productos/{id}`        | Actualiza el producto; devuelve la fila en modo lectura (o en edición con el error) |
++| `GET /productos/{id}`        | Devuelve la fila en modo lectura (botón "Cancelar" de la edición)        |
++| `DELETE /productos/{id}`     | Borra el producto; responde 200 vacío y HTMX quita la fila              |
++
++### Editar un producto
++
++En cada fila de la tabla, el botón **Editar** convierte la fila en un formulario (nombre,
++descripción, categoría, precio simple y precio doble). **Guardar** valida con las mismas
++reglas que el alta; si hay un error se muestra en la misma fila y no se pierde lo escrito.
++Dejar vacío el precio doble o la descripción los borra. **Cancelar** vuelve a la fila original.
++Si el producto ya no existe (por ejemplo, lo borraron desde otra pestaña), la página se recarga.
++
+ ## Notas
+ 
+ - La aplicación no utiliza archivos `.js` locales.
++- `make test` ejecuta los paquetes de a uno (`go test -p 1`) porque los tests de `handlers`
++  y de `db` comparten la misma base de datos.
+ - Asegurarse de tener `$(go env GOPATH)/bin` en la variable de entorno `PATH`
+   para que `make` pueda invocar tanto `sqlc` como `templ`.
+ - Si los puertos `5432` (PostgreSQL) u `8080` (Servidor Web) están ocupados en
+diff -ruN '--exclude=.git' '--exclude=*_templ.go' '--exclude=sqlc' orig_ForestBurger/db/product_repository_test.go proj/ForestBurger/db/product_repository_test.go
+--- orig_ForestBurger/db/product_repository_test.go	2026-11-19 19:08:05.248977115 +0000
++++ proj/ForestBurger/db/product_repository_test.go	2026-11-19 19:09:10.365185220 +0000
+@@ -3,6 +3,7 @@
+ import (
+ 	"context"
+ 	"database/sql"
++	"errors"
+ 	"testing"
+ 
+ 	sqlc "forestburger/db/sqlc"
+@@ -125,3 +126,73 @@
+ 		probarBorrarProducto(t, queries, ctx, prod.ID)
+ 	})
+ }
++
++// TestUpdateProducto verifica la query UpdateProducto: guarda todos los campos (incluido el
++// precio doble), permite dejar el precio doble en NULL y avisa si el producto no existe.
++func TestUpdateProducto(t *testing.T) {
++	queries, cleanup := setupTestDB(t)
++	defer cleanup()
++
++	ctx := context.Background()
++	prod := probarCrearProducto(t, queries, ctx)
++	// Se registra después de cleanup() para que, al salir, corra antes de cerrar la conexión.
++	defer func() { _ = queries.DeleteProducto(ctx, prod.ID) }()
++
++	t.Run("Actualiza todos los campos incluido el precio doble", func(t *testing.T) {
++		actualizado, err := queries.UpdateProducto(ctx, sqlc.UpdateProductoParams{
++			ID:          prod.ID,
++			Nombre:      "Hamburguesa Triple",
++			Categoria:   "veggie",
++			Precio:      "11000.00",
++			PrecioDoble: sql.NullString{String: "13500.50", Valid: true},
++			Descripcion: sql.NullString{String: "Triple carne", Valid: true},
++		})
++		if err != nil {
++			t.Fatalf("Error al actualizar producto: %v", err)
++		}
++
++		obtenido, err := queries.GetProducto(ctx, prod.ID)
++		if err != nil {
++			t.Fatalf("Error al obtener producto: %v", err)
++		}
++		if obtenido != actualizado {
++			t.Errorf("lo devuelto por UpdateProducto (%+v) no coincide con lo guardado (%+v)", actualizado, obtenido)
++		}
++		if obtenido.Nombre != "Hamburguesa Triple" || obtenido.Categoria != "veggie" || obtenido.Precio != "11000.00" {
++			t.Errorf("campos incorrectos tras actualizar: %+v", obtenido)
++		}
++		if !obtenido.PrecioDoble.Valid || obtenido.PrecioDoble.String != "13500.50" {
++			t.Errorf("precio doble = %+v, se esperaba 13500.50", obtenido.PrecioDoble)
++		}
++	})
++
++	t.Run("Precio doble NULL lo borra", func(t *testing.T) {
++		actualizado, err := queries.UpdateProducto(ctx, sqlc.UpdateProductoParams{
++			ID:        prod.ID,
++			Nombre:    "Hamburguesa Triple",
++			Categoria: "veggie",
++			Precio:    "11000.00",
++		})
++		if err != nil {
++			t.Fatalf("Error al actualizar producto: %v", err)
++		}
++		if actualizado.PrecioDoble.Valid {
++			t.Errorf("el precio doble debería ser NULL, es %+v", actualizado.PrecioDoble)
++		}
++		if actualizado.Descripcion.Valid {
++			t.Errorf("la descripción debería ser NULL, es %+v", actualizado.Descripcion)
++		}
++	})
++
++	t.Run("Producto inexistente devuelve sql.ErrNoRows", func(t *testing.T) {
++		_, err := queries.UpdateProducto(ctx, sqlc.UpdateProductoParams{
++			ID:        -1,
++			Nombre:    "No existe",
++			Categoria: "hamburguesa",
++			Precio:    "1.00",
++		})
++		if !errors.Is(err, sql.ErrNoRows) {
++			t.Errorf("se esperaba sql.ErrNoRows y se obtuvo %v", err)
++		}
++	})
++}
+diff -ruN '--exclude=.git' '--exclude=*_templ.go' '--exclude=sqlc' orig_ForestBurger/handlers/producto.go proj/ForestBurger/handlers/producto.go
+--- orig_ForestBurger/handlers/producto.go	2026-11-19 19:08:05.249177160 +0000
++++ proj/ForestBurger/handlers/producto.go	2026-11-19 19:08:33.176014632 +0000
+@@ -188,6 +188,7 @@
+ 		Nombre:      req.Nombre,
+ 		Categoria:   req.Categoria,
+ 		Precio:      req.precioStr(),
++		PrecioDoble: req.precioDobleNull(),
+ 		Descripcion: req.descripcionNull(),
+ 	})
+ 	if errors.Is(err, sql.ErrNoRows) {
+diff -ruN '--exclude=.git' '--exclude=*_templ.go' '--exclude=sqlc' orig_ForestBurger/handlers/producto_web.go proj/ForestBurger/handlers/producto_web.go
+--- orig_ForestBurger/handlers/producto_web.go	2026-11-19 19:08:05.249157230 +0000
++++ proj/ForestBurger/handlers/producto_web.go	2026-11-19 19:08:33.139734598 +0000
+@@ -1,6 +1,8 @@
+ package handlers
+ 
+ import (
++	"database/sql"
++	"errors"
+ 	"net/http"
+ 	"strconv"
+ 	"strings"
+@@ -15,7 +17,7 @@
+ 	a.renderIndex(w, r, views.FormProducto{}, http.StatusOK)
+ }
+ 
+-// / CrearProducto: POST /productos
++// CrearProducto: POST /productos
+ // Recibe el formulario (lo manda HTMX), valida y guarda. Responde con dos fragmentos:
+ // la lista actualizada y el formulario (vacío si salió bien, con el mensaje si hubo error).
+ func (a *API) CrearProducto(w http.ResponseWriter, r *http.Request) {
+@@ -23,55 +25,97 @@
+ 		http.Error(w, "Formulario inválido", http.StatusBadRequest)
+ 		return
+ 	}
+-	form := views.FormProducto{
+-		Nombre:      strings.TrimSpace(r.FormValue("nombre")),
+-		Categoria:   r.FormValue("categoria"),
+-		Precio:      r.FormValue("precio"),
+-		PrecioDoble: strings.TrimSpace(r.FormValue("precio_doble")),
+-		Descripcion: strings.TrimSpace(r.FormValue("descripcion")),
++	form := formDesdeRequest(r)
++
++	req, msg := armarRequest(form)
++	if msg != "" {
++		form.Error = msg
++		a.renderFragmentos(w, r, form)
++		return
+ 	}
+ 
+-	precio, err := strconv.ParseFloat(form.Precio, 64)
++	_, err := a.q.CreateProducto(r.Context(), sqlc.CreateProductoParams{
++		Nombre:      req.Nombre,
++		Categoria:   req.Categoria,
++		Precio:      req.precioStr(),
++		PrecioDoble: req.precioDobleNull(),
++		Descripcion: req.descripcionNull(),
++	})
+ 	if err != nil {
+-		form.Error = "Ingresá un precio válido"
++		form.Error = "No se pudo guardar el producto"
+ 		a.renderFragmentos(w, r, form)
+ 		return
+ 	}
+ 
+-	req := productoRequest{Nombre: form.Nombre, Categoria: form.Categoria, Precio: precio}
+-	if form.PrecioDoble != "" {
+-		pd, err := strconv.ParseFloat(form.PrecioDoble, 64)
+-		if err != nil {
+-			form.Error = "Ingresá un precio doble válido"
+-			a.renderFragmentos(w, r, form)
+-			return
+-		}
+-		req.PrecioDoble = &pd
++	// Sin redirect: se devuelve la lista y el formulario vacío (OOB).
++	a.renderFragmentos(w, r, views.FormProducto{})
++}
++
++// FilaProducto: GET /productos/{id}
++// Devuelve la fila del producto en modo lectura (la usa el botón "Cancelar" de la edición).
++func (a *API) FilaProducto(w http.ResponseWriter, r *http.Request) {
++	p, ok := a.productoDeRuta(w, r)
++	if !ok {
++		return
+ 	}
+-	if form.Descripcion != "" {
+-		req.Descripcion = &form.Descripcion
++	w.Header().Set("Content-Type", "text/html; charset=utf-8")
++	views.ProductoFila(p).Render(r.Context(), w)
++}
++
++// FormEditarProducto: GET /productos/{id}/editar
++// Devuelve la fila del producto en modo edición, con los datos actuales cargados.
++func (a *API) FormEditarProducto(w http.ResponseWriter, r *http.Request) {
++	p, ok := a.productoDeRuta(w, r)
++	if !ok {
++		return
++	}
++	a.renderFilaEditar(w, r, p.ID, formDesdeProducto(p))
++}
++
++// ActualizarProducto: PUT /productos/{id}
++// Recibe los campos de la fila, valida con las mismas reglas que la creación y actualiza.
++// Si salió bien devuelve la fila en modo lectura; si los datos son inválidos devuelve la fila
++// en modo edición con el mensaje (con 200, porque HTMX no hace el swap de las respuestas 4xx/5xx).
++func (a *API) ActualizarProducto(w http.ResponseWriter, r *http.Request) {
++	id, err := pathID(r)
++	if err != nil {
++		http.Error(w, "id inválido", http.StatusBadRequest)
++		return
++	}
++	if err := r.ParseForm(); err != nil {
++		http.Error(w, "Formulario inválido", http.StatusBadRequest)
++		return
+ 	}
+-	if msg := req.validate(); msg != "" {
++	form := formDesdeRequest(r)
++
++	req, msg := armarRequest(form)
++	if msg != "" {
+ 		form.Error = msg
+-		a.renderFragmentos(w, r, form)
++		a.renderFilaEditar(w, r, id, form)
+ 		return
+ 	}
+ 
+-	_, err = a.q.CreateProducto(r.Context(), sqlc.CreateProductoParams{
++	// UpdateProducto es :one, así que avisa con sql.ErrNoRows si el producto no existe.
++	p, err := a.q.UpdateProducto(r.Context(), sqlc.UpdateProductoParams{
++		ID:          id,
+ 		Nombre:      req.Nombre,
+ 		Categoria:   req.Categoria,
+ 		Precio:      req.precioStr(),
+ 		PrecioDoble: req.precioDobleNull(),
+ 		Descripcion: req.descripcionNull(),
+ 	})
++	if errors.Is(err, sql.ErrNoRows) {
++		productoNoEncontrado(w)
++		return
++	}
+ 	if err != nil {
+-		form.Error = "No se pudo guardar el producto"
+-		a.renderFragmentos(w, r, form)
++		form.Error = "No se pudo actualizar el producto"
++		a.renderFilaEditar(w, r, id, form)
+ 		return
+ 	}
+ 
+-	// Sin redirect: se devuelve la lista y el formulario vacío (OOB).
+-	a.renderFragmentos(w, r, views.FormProducto{})
++	w.Header().Set("Content-Type", "text/html; charset=utf-8")
++	views.ProductoFila(p).Render(r.Context(), w)
+ }
+ 
+ // BorrarProducto: DELETE /productos/{id}
+@@ -88,6 +132,87 @@
+ 	w.WriteHeader(http.StatusOK)
+ }
+ 
++// ---------- helpers ----------
++
++// formDesdeRequest lee los campos del formulario. Todo llega como texto.
++func formDesdeRequest(r *http.Request) views.FormProducto {
++	return views.FormProducto{
++		Nombre:      strings.TrimSpace(r.FormValue("nombre")),
++		Categoria:   r.FormValue("categoria"),
++		Precio:      r.FormValue("precio"),
++		PrecioDoble: strings.TrimSpace(r.FormValue("precio_doble")),
++		Descripcion: strings.TrimSpace(r.FormValue("descripcion")),
++	}
++}
++
++// armarRequest convierte el formulario (texto) en el mismo productoRequest que usa la API, así
++// se reutiliza la validación. Si algo está mal devuelve el mensaje para mostrarle al usuario.
++func armarRequest(form views.FormProducto) (productoRequest, string) {
++	precio, err := strconv.ParseFloat(form.Precio, 64)
++	if err != nil {
++		return productoRequest{}, "Ingresá un precio válido"
++	}
++	req := productoRequest{Nombre: form.Nombre, Categoria: form.Categoria, Precio: precio}
++
++	// El precio doble es opcional: vacío significa que no tiene versión doble.
++	if form.PrecioDoble != "" {
++		pd, err := strconv.ParseFloat(form.PrecioDoble, 64)
++		if err != nil {
++			return productoRequest{}, "Ingresá un precio doble válido"
++		}
++		req.PrecioDoble = &pd
++	}
++	if form.Descripcion != "" {
++		desc := form.Descripcion
++		req.Descripcion = &desc
++	}
++	return req, req.validate()
++}
++
++// formDesdeProducto carga el formulario con los datos actuales de un producto.
++func formDesdeProducto(p sqlc.Producto) views.FormProducto {
++	f := views.FormProducto{Nombre: p.Nombre, Categoria: p.Categoria, Precio: p.Precio}
++	if p.PrecioDoble.Valid {
++		f.PrecioDoble = p.PrecioDoble.String
++	}
++	if p.Descripcion.Valid {
++		f.Descripcion = p.Descripcion.String
++	}
++	return f
++}
++
++// productoDeRuta lee el {id} de la URL y trae el producto. Si algo falla ya responde al cliente.
++func (a *API) productoDeRuta(w http.ResponseWriter, r *http.Request) (sqlc.Producto, bool) {
++	id, err := pathID(r)
++	if err != nil {
++		http.Error(w, "id inválido", http.StatusBadRequest)
++		return sqlc.Producto{}, false
++	}
++	p, err := a.q.GetProducto(r.Context(), id)
++	if errors.Is(err, sql.ErrNoRows) {
++		productoNoEncontrado(w)
++		return sqlc.Producto{}, false
++	}
++	if err != nil {
++		http.Error(w, "No se pudo cargar el producto", http.StatusInternalServerError)
++		return sqlc.Producto{}, false
++	}
++	return p, true
++}
++
++// productoNoEncontrado responde 404. HTMX ignora los 4xx, pero respeta HX-Refresh: la página se
++// recarga y la lista deja de mostrar la fila de un producto que ya no existe.
++func productoNoEncontrado(w http.ResponseWriter) {
++	w.Header().Set("HX-Refresh", "true")
++	http.Error(w, "producto no encontrado", http.StatusNotFound)
++}
++
++// renderFilaEditar renderiza la fila de un producto en modo edición.
++func (a *API) renderFilaEditar(w http.ResponseWriter, r *http.Request, id int32, form views.FormProducto) {
++	w.Header().Set("Content-Type", "text/html; charset=utf-8")
++	views.ProductoFilaEditar(id, form).Render(r.Context(), w)
++}
++
+ // renderIndex trae los productos y renderiza la página completa con el estado del formulario.
+ func (a *API) renderIndex(w http.ResponseWriter, r *http.Request, form views.FormProducto, status int) {
+ 	productos, err := a.q.ListProductos(r.Context())
+@@ -109,5 +234,5 @@
+ 	}
+ 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+ 	views.ProductoList(productos).Render(r.Context(), w)
+-	views.ProductoForm(form).Render(r.Context(), w)
++	views.ProductoFormOOB(form).Render(r.Context(), w)
+ }
+diff -ruN '--exclude=.git' '--exclude=*_templ.go' '--exclude=sqlc' orig_ForestBurger/handlers/producto_web_test.go proj/ForestBurger/handlers/producto_web_test.go
+--- orig_ForestBurger/handlers/producto_web_test.go	2026-11-19 19:08:05.249166909 +0000
++++ proj/ForestBurger/handlers/producto_web_test.go	2026-11-19 19:09:10.364742616 +0000
+@@ -82,6 +82,9 @@
+ 	mux := http.NewServeMux()
+ 	mux.HandleFunc("GET /{$}", api.Index)
+ 	mux.HandleFunc("POST /productos", api.CrearProducto)
++	mux.HandleFunc("GET /productos/{id}", api.FilaProducto)
++	mux.HandleFunc("GET /productos/{id}/editar", api.FormEditarProducto)
++	mux.HandleFunc("PUT /productos/{id}", api.ActualizarProducto)
+ 	mux.HandleFunc("DELETE /productos/{id}", api.BorrarProducto)
+ 	return mux, q
+ }
+@@ -234,3 +237,237 @@
+ 		t.Errorf("status = %d, quiero 400", rec.Code)
+ 	}
+ }
++
++// ---------- actualizar productos (HTMX: fila en modo edición / lectura) ----------
++
++// crearParaEditar inserta un producto con precio doble y descripción, y devuelve su id como texto.
++func crearParaEditar(t *testing.T, q *sqlc.Queries) (sqlc.Producto, string) {
++	t.Helper()
++	p, err := q.CreateProducto(context.Background(), sqlc.CreateProductoParams{
++		Nombre:      "Forest Clasica",
++		Categoria:   "hamburguesa",
++		Precio:      "9500.00",
++		PrecioDoble: sql.NullString{String: "12000.00", Valid: true},
++		Descripcion: sql.NullString{String: "carne y cheddar", Valid: true},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	return p, strconv.Itoa(int(p.ID))
++}
++
++func pedir(mux http.Handler, metodo, ruta string, datos url.Values) *httptest.ResponseRecorder {
++	var req *http.Request
++	if datos == nil {
++		req = httptest.NewRequest(metodo, ruta, nil)
++	} else {
++		req = httptest.NewRequest(metodo, ruta, strings.NewReader(datos.Encode()))
++		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
++	}
++	rec := httptest.NewRecorder()
++	mux.ServeHTTP(rec, req)
++	return rec
++}
++
++func TestFormEditarProducto_MuestraFilaConDatos(t *testing.T) {
++	mux, q := setup(t)
++	_, id := crearParaEditar(t, q)
++
++	rec := pedir(mux, http.MethodGet, "/productos/"+id+"/editar", nil)
++
++	if rec.Code != http.StatusOK {
++		t.Fatalf("status = %d, quiero 200", rec.Code)
++	}
++	body := rec.Body.String()
++	if strings.Contains(body, "<html") {
++		t.Error("la respuesta debe ser solo la fila, no la página completa")
++	}
++	for _, esperado := range []string{
++		`hx-put="/productos/` + id + `"`,
++		`value="Forest Clasica"`,
++		`value="9500.00"`,
++		`value="12000.00"`,
++		"carne y cheddar",
++	} {
++		if !strings.Contains(body, esperado) {
++			t.Errorf("la fila de edición no contiene %q", esperado)
++		}
++	}
++}
++
++func TestFilaProducto_VuelveAModoLectura(t *testing.T) {
++	mux, q := setup(t)
++	_, id := crearParaEditar(t, q)
++
++	rec := pedir(mux, http.MethodGet, "/productos/"+id, nil)
++
++	if rec.Code != http.StatusOK {
++		t.Fatalf("status = %d, quiero 200", rec.Code)
++	}
++	body := rec.Body.String()
++	for _, esperado := range []string{"Forest Clasica", `hx-get="/productos/` + id + `/editar"`} {
++		if !strings.Contains(body, esperado) {
++			t.Errorf("la fila no contiene %q", esperado)
++		}
++	}
++	if strings.Contains(body, "hx-put=") {
++		t.Error("la fila en modo lectura no debería tener el botón Guardar")
++	}
++}
++
++func TestEditarProducto_NoExisteOIDInvalido(t *testing.T) {
++	mux, _ := setup(t)
++	casos := []struct {
++		nombre string
++		metodo string
++		ruta   string
++		datos  url.Values
++		status int
++	}{
++		{"editar inexistente", http.MethodGet, "/productos/9999/editar", nil, http.StatusNotFound},
++		{"fila inexistente", http.MethodGet, "/productos/9999", nil, http.StatusNotFound},
++		{"editar id inválido", http.MethodGet, "/productos/abc/editar", nil, http.StatusBadRequest},
++		{"actualizar inexistente", http.MethodPut, "/productos/9999",
++			url.Values{"nombre": {"x"}, "categoria": {"hamburguesa"}, "precio": {"10"}}, http.StatusNotFound},
++		{"actualizar id inválido", http.MethodPut, "/productos/abc",
++			url.Values{"nombre": {"x"}, "categoria": {"hamburguesa"}, "precio": {"10"}}, http.StatusBadRequest},
++	}
++	for _, c := range casos {
++		t.Run(c.nombre, func(t *testing.T) {
++			rec := pedir(mux, c.metodo, c.ruta, c.datos)
++			if rec.Code != c.status {
++				t.Errorf("status = %d, quiero %d", rec.Code, c.status)
++			}
++			// Con 404 se pide recargar la página para que la fila vieja desaparezca.
++			if c.status == http.StatusNotFound && rec.Header().Get("HX-Refresh") != "true" {
++				t.Error("falta el header HX-Refresh: true en la respuesta 404")
++			}
++		})
++	}
++}
++
++func TestActualizarProducto_GuardaYDevuelveFila(t *testing.T) {
++	mux, q := setup(t)
++	p, id := crearParaEditar(t, q)
++
++	rec := pedir(mux, http.MethodPut, "/productos/"+id, url.Values{
++		"nombre":       {"Forest Triple"},
++		"categoria":    {"veggie"},
++		"precio":       {"11500"},
++		"precio_doble": {"14000.50"},
++		"descripcion":  {"triple carne"},
++	})
++
++	if rec.Code != http.StatusOK {
++		t.Fatalf("status = %d, quiero 200", rec.Code)
++	}
++	body := rec.Body.String()
++	if strings.Contains(body, "<html") {
++		t.Error("la respuesta debe ser solo la fila, no la página completa")
++	}
++	for _, esperado := range []string{"Forest Triple", `hx-get="/productos/` + id + `/editar"`} {
++		if !strings.Contains(body, esperado) {
++			t.Errorf("la fila devuelta no contiene %q", esperado)
++		}
++	}
++
++	got, err := q.GetProducto(context.Background(), p.ID)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.Nombre != "Forest Triple" || got.Categoria != "veggie" || got.Precio != "11500.00" {
++		t.Errorf("producto actualizado incorrecto: %+v", got)
++	}
++	if !got.PrecioDoble.Valid || got.PrecioDoble.String != "14000.50" {
++		t.Errorf("precio doble = %+v, quiero 14000.50", got.PrecioDoble)
++	}
++	if !got.Descripcion.Valid || got.Descripcion.String != "triple carne" {
++		t.Errorf("descripción = %+v, quiero 'triple carne'", got.Descripcion)
++	}
++}
++
++func TestActualizarProducto_PrecioDobleVacioLoBorra(t *testing.T) {
++	mux, q := setup(t)
++	p, id := crearParaEditar(t, q)
++
++	rec := pedir(mux, http.MethodPut, "/productos/"+id, url.Values{
++		"nombre":       {"Forest Clasica"},
++		"categoria":    {"hamburguesa"},
++		"precio":       {"9500"},
++		"precio_doble": {""},
++		"descripcion":  {""},
++	})
++
++	if rec.Code != http.StatusOK {
++		t.Fatalf("status = %d, quiero 200", rec.Code)
++	}
++	got, err := q.GetProducto(context.Background(), p.ID)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.PrecioDoble.Valid {
++		t.Errorf("el precio doble debería quedar en NULL, quedó %+v", got.PrecioDoble)
++	}
++	if got.Descripcion.Valid {
++		t.Errorf("la descripción debería quedar en NULL, quedó %+v", got.Descripcion)
++	}
++}
++
++func TestActualizarProducto_Errores(t *testing.T) {
++	casos := []struct {
++		nombre  string
++		datos   url.Values
++		mensaje string
++	}{
++		{"precio no numérico",
++			url.Values{"nombre": {"Nuevo"}, "categoria": {"hamburguesa"}, "precio": {"abc"}},
++			"Ingresá un precio válido"},
++		{"precio doble no numérico",
++			url.Values{"nombre": {"Nuevo"}, "categoria": {"hamburguesa"}, "precio": {"10"}, "precio_doble": {"zzz"}},
++			"Ingresá un precio doble válido"},
++		{"nombre vacío",
++			url.Values{"nombre": {"  "}, "categoria": {"hamburguesa"}, "precio": {"10"}},
++			"el nombre es obligatorio"},
++		{"categoría vacía",
++			url.Values{"nombre": {"Nuevo"}, "categoria": {""}, "precio": {"10"}},
++			"la categoría es obligatoria"},
++		{"precio negativo",
++			url.Values{"nombre": {"Nuevo"}, "categoria": {"hamburguesa"}, "precio": {"-3"}},
++			"el precio no puede ser negativo"},
++		{"precio doble negativo",
++			url.Values{"nombre": {"Nuevo"}, "categoria": {"hamburguesa"}, "precio": {"10"}, "precio_doble": {"-1"}},
++			"el precio doble no puede ser negativo"},
++	}
++	for _, c := range casos {
++		t.Run(c.nombre, func(t *testing.T) {
++			mux, q := setup(t)
++			p, id := crearParaEditar(t, q)
++
++			rec := pedir(mux, http.MethodPut, "/productos/"+id, c.datos)
++
++			// 200 y la fila sigue en modo edición con el mensaje (HTMX no hace swap de los 4xx).
++			if rec.Code != http.StatusOK {
++				t.Errorf("status = %d, quiero 200", rec.Code)
++			}
++			body := rec.Body.String()
++			if !strings.Contains(body, c.mensaje) {
++				t.Errorf("la fila no muestra el mensaje %q", c.mensaje)
++			}
++			if !strings.Contains(body, `hx-put="/productos/`+id+`"`) {
++				t.Error("la fila debería seguir en modo edición")
++			}
++			// Lo que se escribió se conserva para no obligar a tipearlo de nuevo.
++			if !strings.Contains(body, `name="nombre"`) {
++				t.Error("la fila debería conservar los campos")
++			}
++
++			got, err := q.GetProducto(context.Background(), p.ID)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if got.Nombre != "Forest Clasica" || got.Precio != "9500.00" {
++				t.Errorf("el producto no debería haber cambiado: %+v", got)
++			}
++		})
++	}
++}
+diff -ruN '--exclude=.git' '--exclude=*_templ.go' '--exclude=sqlc' orig_ForestBurger/main.go proj/ForestBurger/main.go
+--- orig_ForestBurger/main.go	2026-11-19 19:08:05.249205330 +0000
++++ proj/ForestBurger/main.go	2026-11-19 19:08:33.175838922 +0000
+@@ -41,6 +41,9 @@
+ 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+ 	mux.HandleFunc("GET /{$}", api.Index)
+ 	mux.HandleFunc("POST /productos", api.CrearProducto)
++	mux.HandleFunc("GET /productos/{id}", api.FilaProducto)
++	mux.HandleFunc("GET /productos/{id}/editar", api.FormEditarProducto)
++	mux.HandleFunc("PUT /productos/{id}", api.ActualizarProducto)
+ 	mux.HandleFunc("DELETE /productos/{id}", api.BorrarProducto)
+ 
+ 	// Probamos los endpoints
+diff -ruN '--exclude=.git' '--exclude=*_templ.go' '--exclude=sqlc' orig_ForestBurger/static/styles.css proj/ForestBurger/static/styles.css
+--- orig_ForestBurger/static/styles.css	2026-11-19 19:08:05.249005096 +0000
++++ proj/ForestBurger/static/styles.css	2026-11-19 19:08:33.176151801 +0000
+@@ -139,4 +139,20 @@
+ .campos-fila { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+ .ayuda { margin: -12px 0 0; font-size: 12px; color: var(--fb-texto-secundario); }
+ @media (max-width: 600px) { .campos-fila { grid-template-columns: 1fr; } }
+-legend.campo-label { padding: 0; margin-bottom: 6px; }
+\ No newline at end of file
++legend.campo-label { padding: 0; margin-bottom: 6px; }
++/* ---------- Edición en la fila de la tabla ---------- */
++.btn-fila {
++  height: 36px; padding: 0 14px;
++  background: transparent; border: 1px solid var(--fb-borde); border-radius: var(--fb-radius-md);
++  color: var(--fb-crema); font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
++}
++.btn-fila.peligro { border-color: var(--fb-peligro); color: var(--fb-peligro); }
++.input-fila {
++  width: 100%; box-sizing: border-box; padding: 8px 10px;
++  background: var(--fb-superficie); border: 1px solid var(--fb-borde); border-radius: var(--fb-radius-md);
++  color: var(--fb-texto); font-family: inherit; font-size: 15px;
++}
++.input-fila:focus { outline: 2px solid var(--fb-crema); outline-offset: 1px; }
++.fila-edicion td { vertical-align: top; }
++.fila-edicion .input-fila + .input-fila { margin-top: 8px; }
++.fila-edicion .error { margin: 0 0 8px; }
+diff -ruN '--exclude=.git' '--exclude=*_templ.go' '--exclude=sqlc' orig_ForestBurger/views/producto_list.templ proj/ForestBurger/views/producto_list.templ
+--- orig_ForestBurger/views/producto_list.templ	2026-11-19 19:08:05.249099979 +0000
++++ proj/ForestBurger/views/producto_list.templ	2026-11-19 19:08:05.252431357 +0000
+@@ -27,32 +27,7 @@
+                 </thead>
+                 <tbody>
+                     for _, p := range productos {
+-                        <tr>
+-                            <td>
+-                                <div class="producto-nombre">{ p.Nombre }</div>
+-                                if p.Descripcion.Valid {
+-                                    <div class="producto-desc">{ p.Descripcion.String }</div>
+-                                }
+-                            </td>
+-                            <td><span class="tag">{ etiquetaCategoria(p.Categoria) }</span></td>
+-                            <td class="precio">{ formatPrecio(p.Precio) }</td>
+-                            <td class="precio">
+-                                if p.PrecioDoble.Valid {
+-                                    { formatPrecio(p.PrecioDoble.String) }
+-                                } else {
+-                                    —
+-                                }
+-                            </td>
+-                            <td>
+-                                <button
+-                                    class="btn-borrar"
+-                                    hx-delete={ fmt.Sprintf("/productos/%d", p.ID) }
+-                                    hx-target="closest tr"
+-                                    hx-swap="outerHTML"
+-                                    hx-confirm="¿Estás seguro?"
+-                                >Borrar</button>
+-                            </td>
+-                        </tr>
++                        @ProductoFila(p)
+                     }
+                 </tbody>
+             </table>
+@@ -60,6 +35,106 @@
+     </section>
+ }
+ 
++// ProductoFila renderiza una fila de la tabla en modo lectura, con los botones Editar y Borrar.
++// También es lo que devuelve el servidor al guardar o cancelar una edición.
++templ ProductoFila(p db.Producto) {
++    <tr>
++        <td>
++            <div class="producto-nombre">{ p.Nombre }</div>
++            if p.Descripcion.Valid {
++                <div class="producto-desc">{ p.Descripcion.String }</div>
++            }
++        </td>
++        <td><span class="tag">{ etiquetaCategoria(p.Categoria) }</span></td>
++        <td class="precio">{ formatPrecio(p.Precio) }</td>
++        <td class="precio">
++            if p.PrecioDoble.Valid {
++                { formatPrecio(p.PrecioDoble.String) }
++            } else {
++                —
++            }
++        </td>
++        <td>
++            <div class="acciones">
++                <button
++                    class="btn-fila btn-editar"
++                    hx-get={ fmt.Sprintf("/productos/%d/editar", p.ID) }
++                    hx-target="closest tr"
++                    hx-swap="outerHTML"
++                >Editar</button>
++                <button
++                    class="btn-fila peligro btn-borrar"
++                    hx-delete={ fmt.Sprintf("/productos/%d", p.ID) }
++                    hx-target="closest tr"
++                    hx-swap="outerHTML"
++                    hx-confirm="¿Estás seguro?"
++                >Borrar</button>
++            </div>
++        </td>
++    </tr>
++}
++
++// ProductoFilaEditar renderiza la misma fila con inputs en cada celda. "Guardar" hace PUT con
++// los valores de la fila (hx-include) y "Cancelar" vuelve a pedir la fila en modo lectura.
++// Si el servidor rechaza los datos, devuelve esta misma fila con f.Error y lo que se escribió.
++templ ProductoFilaEditar(id int32, f FormProducto) {
++    <tr class="fila-edicion">
++        <td>
++            if f.Error != "" {
++                <p class="error" role="alert">{ f.Error }</p>
++            }
++            <input class="input-fila" type="text" name="nombre" value={ f.Nombre } aria-label="Nombre"/>
++            <textarea class="input-fila" name="descripcion" rows="2" aria-label="Descripción">{ f.Descripcion }</textarea>
++        </td>
++        <td>
++            <select class="input-fila" name="categoria" aria-label="Categoría">
++                for _, c := range categorias {
++                    <option value={ c.Valor } selected?={ f.Categoria == c.Valor }>{ c.Label }</option>
++                }
++                if f.Categoria != "" && !categoriaConocida(f.Categoria) {
++                    <option value={ f.Categoria } selected>{ f.Categoria }</option>
++                }
++            </select>
++        </td>
++        <td>
++            <input class="input-fila" type="number" name="precio" min="0" step="0.01" value={ f.Precio } aria-label="Precio simple"/>
++        </td>
++        <td>
++            <input class="input-fila" type="number" name="precio_doble" min="0" step="0.01" value={ f.PrecioDoble } aria-label="Precio doble"/>
++        </td>
++        <td>
++            <div class="acciones">
++                <button
++                    type="button"
++                    class="btn-fila btn-guardar"
++                    hx-put={ fmt.Sprintf("/productos/%d", id) }
++                    hx-include="closest tr"
++                    hx-target="closest tr"
++                    hx-swap="outerHTML"
++                >Guardar</button>
++                <button
++                    type="button"
++                    class="btn-fila btn-cancelar"
++                    hx-get={ fmt.Sprintf("/productos/%d", id) }
++                    hx-target="closest tr"
++                    hx-swap="outerHTML"
++                >Cancelar</button>
++            </div>
++        </td>
++    </tr>
++}
++
++// categoriaConocida indica si la categoría está entre las del formulario. Si un producto tiene una
++// categoría vieja o distinta, la edición la conserva en el select en lugar de cambiarla en silencio.
++func categoriaConocida(c string) bool {
++	for _, k := range categorias {
++		if k.Valor == c {
++			return true
++		}
++	}
++	return false
++}
++
+ // formatPrecio pasa "14500.00" (como lo devuelve sqlc) a "$14.500". Muestra centavos solo si hay.
+ func formatPrecio(s string) string {
+ 	f, err := strconv.ParseFloat(s, 64)

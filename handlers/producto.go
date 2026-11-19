@@ -188,6 +188,7 @@ func (a *API) updateProducto(w http.ResponseWriter, r *http.Request) {
 		Nombre:      req.Nombre,
 		Categoria:   req.Categoria,
 		Precio:      req.precioStr(),
+		PrecioDoble: req.precioDobleNull(),
 		Descripcion: req.descripcionNull(),
 	})
 	if errors.Is(err, sql.ErrNoRows) {

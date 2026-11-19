@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	sqlc "forestburger/db/sqlc"
@@ -123,5 +124,75 @@ func TestCRUDProducto(t *testing.T) {
 
 	t.Run("Borrar Producto", func(t *testing.T) {
 		probarBorrarProducto(t, queries, ctx, prod.ID)
+	})
+}
+
+// TestUpdateProducto verifica la query UpdateProducto: guarda todos los campos (incluido el
+// precio doble), permite dejar el precio doble en NULL y avisa si el producto no existe.
+func TestUpdateProducto(t *testing.T) {
+	queries, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	prod := probarCrearProducto(t, queries, ctx)
+	// Se registra después de cleanup() para que, al salir, corra antes de cerrar la conexión.
+	defer func() { _ = queries.DeleteProducto(ctx, prod.ID) }()
+
+	t.Run("Actualiza todos los campos incluido el precio doble", func(t *testing.T) {
+		actualizado, err := queries.UpdateProducto(ctx, sqlc.UpdateProductoParams{
+			ID:          prod.ID,
+			Nombre:      "Hamburguesa Triple",
+			Categoria:   "veggie",
+			Precio:      "11000.00",
+			PrecioDoble: sql.NullString{String: "13500.50", Valid: true},
+			Descripcion: sql.NullString{String: "Triple carne", Valid: true},
+		})
+		if err != nil {
+			t.Fatalf("Error al actualizar producto: %v", err)
+		}
+
+		obtenido, err := queries.GetProducto(ctx, prod.ID)
+		if err != nil {
+			t.Fatalf("Error al obtener producto: %v", err)
+		}
+		if obtenido != actualizado {
+			t.Errorf("lo devuelto por UpdateProducto (%+v) no coincide con lo guardado (%+v)", actualizado, obtenido)
+		}
+		if obtenido.Nombre != "Hamburguesa Triple" || obtenido.Categoria != "veggie" || obtenido.Precio != "11000.00" {
+			t.Errorf("campos incorrectos tras actualizar: %+v", obtenido)
+		}
+		if !obtenido.PrecioDoble.Valid || obtenido.PrecioDoble.String != "13500.50" {
+			t.Errorf("precio doble = %+v, se esperaba 13500.50", obtenido.PrecioDoble)
+		}
+	})
+
+	t.Run("Precio doble NULL lo borra", func(t *testing.T) {
+		actualizado, err := queries.UpdateProducto(ctx, sqlc.UpdateProductoParams{
+			ID:        prod.ID,
+			Nombre:    "Hamburguesa Triple",
+			Categoria: "veggie",
+			Precio:    "11000.00",
+		})
+		if err != nil {
+			t.Fatalf("Error al actualizar producto: %v", err)
+		}
+		if actualizado.PrecioDoble.Valid {
+			t.Errorf("el precio doble debería ser NULL, es %+v", actualizado.PrecioDoble)
+		}
+		if actualizado.Descripcion.Valid {
+			t.Errorf("la descripción debería ser NULL, es %+v", actualizado.Descripcion)
+		}
+	})
+
+	t.Run("Producto inexistente devuelve sql.ErrNoRows", func(t *testing.T) {
+		_, err := queries.UpdateProducto(ctx, sqlc.UpdateProductoParams{
+			ID:        -1,
+			Nombre:    "No existe",
+			Categoria: "hamburguesa",
+			Precio:    "1.00",
+		})
+		if !errors.Is(err, sql.ErrNoRows) {
+			t.Errorf("se esperaba sql.ErrNoRows y se obtuvo %v", err)
+		}
 	})
 }

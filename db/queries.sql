@@ -11,7 +11,7 @@ SELECT * FROM producto ORDER BY categoria, nombre;
 
 -- name: UpdateProducto :one
 UPDATE producto
-SET nombre = $2, categoria = $3, precio = $4, descripcion = $5
+SET nombre = $2, categoria = $3, precio = $4, precio_doble = $5, descripcion = $6
 WHERE id = $1
 RETURNING *;
 
