@@ -16,14 +16,38 @@ import (
 // qué mails son de admins probando el login.
 const errorLogin = "Mail o contraseña incorrectos."
 
-// RequiereAdmin deja pasar solo con una sesión válida de un mail que sigue en ADMIN_EMAILS (sacar
-// a alguien de la lista le corta el acceso aunque su cookie no haya vencido). Sin sesión, a htmx
-// le pide que vaya al login (HX-Redirect, con 200 para que htmx 1.9 lo procese) y a un pedido
-// común lo redirige al login recordando a dónde quería ir.
-func RequiereAdmin(next http.Handler) http.Handler {
+// sesionAdmin revisa la cookie de sesión y devuelve el email si es de un admin que puede entrar:
+// firma y vencimiento bien, el mail sigue en ADMIN_EMAILS y el admin sigue existiendo en la base
+// (en desarrollo la base se borra en cada make run, y una cookie vieja seguía abriendo el panel).
+// borrar avisa que la cookie es válida pero su admin ya no existe: hay que sacarla del navegador.
+func (a *API) sesionAdmin(r *http.Request) (email string, borrar bool, err error) {
+	email, ok := auth.LeerSesion(r, time.Now())
+	if !ok || !auth.EmailPermitido(email) {
+		return "", false, nil
+	}
+	if _, err := a.q.AdminPorEmail(r.Context(), email); errors.Is(err, sql.ErrNoRows) {
+		return "", true, nil
+	} else if err != nil {
+		return "", false, err
+	}
+	return email, false, nil
+}
+
+// RequiereAdmin deja pasar solo a un admin con sesión válida (ver sesionAdmin): sacar a alguien de
+// ADMIN_EMAILS o borrarlo de la base le corta el acceso aunque su cookie no haya vencido. Sin
+// sesión, a htmx le pide que vaya al login (HX-Redirect, con 200 para que htmx 1.9 lo procese) y a
+// un pedido común lo redirige al login recordando a dónde quería ir.
+func (a *API) RequiereAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		email, ok := auth.LeerSesion(r, time.Now())
-		if !ok || !auth.EmailPermitido(email) {
+		email, borrar, err := a.sesionAdmin(r)
+		if err != nil {
+			http.Error(w, "No se pudo verificar la sesión", http.StatusInternalServerError)
+			return
+		}
+		if email == "" {
+			if borrar {
+				http.SetCookie(w, auth.BorrarCookie())
+			}
 			if esHTMX(r) {
 				w.Header().Set("HX-Redirect", "/login")
 				w.WriteHeader(http.StatusOK)
@@ -37,11 +61,21 @@ func RequiereAdmin(next http.Handler) http.Handler {
 }
 
 // FormLogin: GET /login
-// Con una sesión válida no tiene sentido volver a entrar: va directo al panel.
+// Con una sesión válida no tiene sentido volver a entrar: va directo al panel. Si la cookie era de
+// un admin que ya no existe, la borra y muestra el login (si no, el login y el panel se mandarían
+// el uno al otro).
 func (a *API) FormLogin(w http.ResponseWriter, r *http.Request) {
-	if email, ok := auth.LeerSesion(r, time.Now()); ok && auth.EmailPermitido(email) {
+	email, borrar, err := a.sesionAdmin(r)
+	if err != nil {
+		http.Error(w, "No se pudo verificar la sesión", http.StatusInternalServerError)
+		return
+	}
+	if email != "" {
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 		return
+	}
+	if borrar {
+		http.SetCookie(w, auth.BorrarCookie())
 	}
 	renderLogin(w, r, views.FormLogin{Next: r.URL.Query().Get("next")}, http.StatusOK)
 }

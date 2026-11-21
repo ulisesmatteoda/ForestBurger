@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -44,6 +45,14 @@ func main() {
 	queries := sqlc.New(conn)
 	// Instancio api para llamar los metodos de endpoints
 	api := handlers.NewAPI(queries)
+
+	// Solo en desarrollo (DEV_ADMIN_EMAIL y DEV_ADMIN_PASSWORD en el .env): deja un admin listo para
+	// entrar, porque make run arranca con la base vacía. Si falla, se avisa pero la app arranca igual.
+	if email, err := auth.AdminDesarrollo(context.Background(), queries); err != nil {
+		log.Printf("Admin de desarrollo: %v", err)
+	} else if email != "" {
+		log.Printf("Admin de desarrollo listo: %s", email)
+	}
 
 	views.VersionEstilos = versionDe("static/styles.css")
 

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 
 	"forestburger/auth"
@@ -14,17 +15,29 @@ import (
 
 const claveTest = "clave-correcta-123"
 
+// hashTest es el hash bcrypt de claveTest. Se calcula una sola vez: bcrypt es lento a propósito y
+// casi todos los tests guardan el admin.
+var hashTest = sync.OnceValue(func() string {
+	hash, err := auth.HashearPassword(claveTest)
+	if err != nil {
+		panic(err)
+	}
+	return hash
+})
+
+// guardarAdminTest deja en la base el admin de los tests, con la contraseña claveTest.
+func guardarAdminTest(t *testing.T, q *sqlc.Queries) {
+	t.Helper()
+	if _, err := q.GuardarAdmin(context.Background(), sqlc.GuardarAdminParams{Email: adminTest, PasswordHash: hashTest()}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // conAdminGuardado arma el mux sin sesión y guarda el admin de los tests en la base.
 func conAdminGuardado(t *testing.T) http.Handler {
 	t.Helper()
 	mux, q := setupSinSesion(t)
-	hash, err := auth.HashearPassword(claveTest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := q.GuardarAdmin(context.Background(), sqlc.GuardarAdminParams{Email: adminTest, PasswordHash: hash}); err != nil {
-		t.Fatal(err)
-	}
+	guardarAdminTest(t, q)
 	return mux
 }
 
@@ -226,5 +239,43 @@ func TestLogout_BorraLaCookie(t *testing.T) {
 	c := cookieSesion(rec)
 	if c == nil || c.MaxAge >= 0 {
 		t.Errorf("tendría que borrar la cookie (MaxAge < 0), vino %+v", c)
+	}
+}
+
+// ---------- admin que ya no existe ----------
+
+func TestAdmin_CookieDeAdminInexistenteSeBorra(t *testing.T) {
+	mux, _ := setupSinSesion(t) // no guarda ningún admin
+	conCookie := conSesion(mux, adminTest)
+
+	rec := pedirPanel(conCookie, "/admin", false)
+	if rec.Code != http.StatusSeeOther || !strings.HasPrefix(rec.Header().Get("Location"), "/login") {
+		t.Errorf("status = %d, Location = %q; quiero 303 al login", rec.Code, rec.Header().Get("Location"))
+	}
+	if c := cookieSesion(rec); c == nil || c.MaxAge >= 0 {
+		t.Errorf("tendría que borrar la cookie del admin inexistente, vino %+v", c)
+	}
+
+	rec = pedirPanel(conCookie, "/admin", true)
+	if got := rec.Header().Get("HX-Redirect"); got != "/login" {
+		t.Errorf("con htmx: HX-Redirect = %q, quiero /login", got)
+	}
+	if c := cookieSesion(rec); c == nil || c.MaxAge >= 0 {
+		t.Error("con htmx también tendría que borrar la cookie")
+	}
+}
+
+func TestLogin_CookieDeAdminInexistenteMuestraElLogin(t *testing.T) {
+	mux, _ := setupSinSesion(t)
+
+	rec := pedirPanel(conSesion(mux, adminTest), "/login", false)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, quiero 200 con el login (no redirigir a /admin)", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `action="/login"`) {
+		t.Error("tendría que mostrar el formulario de login")
+	}
+	if c := cookieSesion(rec); c == nil || c.MaxAge >= 0 {
+		t.Error("tendría que borrar la cookie del admin inexistente")
 	}
 }

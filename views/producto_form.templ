@@ -1,5 +1,13 @@
 package views
 
+import (
+	"fmt"
+	"net/url"
+	"strings"
+
+	"forestburger/db/sqlc"
+)
+
 // FormProducto son los datos del formulario. Se usan para volver a llenarlo
 // si hubo un error, así el usuario no pierde lo que escribió.
 type FormProducto struct {
@@ -18,7 +26,8 @@ var categorias = []struct{ Valor, Label string }{
 	{"bebida", "Bebida"},
 }
 
-// ModalNuevoProducto es el alta de productos, encima de la lista. Se cierra pidiendo al servidor
+// ModalNuevoProducto es el alta de productos, encima de la lista. Va como multipart porque puede
+// llevar la foto. Se cierra pidiendo al servidor
 // un #modal vacío: con la ✕, con Cancelar, con Esc o con un clic en el fondo (solo en el fondo, no
 // adentro del cuadro: por eso el target:.modal-fondo). Si hay error, el servidor devuelve este mismo
 // modal con f.Error y lo que se escribió. method/action son el respaldo para cuando no hay JS.
@@ -49,7 +58,9 @@ templ ModalNuevoProducto(f FormProducto) {
 			<form
 				method="post"
 				action="/admin/productos"
+				enctype="multipart/form-data"
 				hx-post="/admin/productos"
+				hx-encoding="multipart/form-data"
 				hx-target="#panel-productos"
 				hx-swap="outerHTML"
 			>
@@ -60,7 +71,13 @@ templ ModalNuevoProducto(f FormProducto) {
 					@camposProducto(f)
 				</div>
 				<div class="modal-pie">
-					<button type="reset" class="boton boton-texto">LIMPIAR</button>
+					<button
+						type="reset"
+						class="boton boton-texto"
+						hx-get="/admin/productos/nuevo"
+						hx-target="#modal"
+						hx-swap="innerHTML"
+					>LIMPIAR</button>
 					<div class="modal-acciones">
 						<button
 							type="button"
@@ -76,13 +93,61 @@ templ ModalNuevoProducto(f FormProducto) {
 	</div>
 }
 
+// ModalConfirmarBorrado pide confirmar antes de borrar, con el estilo del panel (el confirm() del
+// navegador no se puede estilizar). Se cierra igual que el alta. BORRAR reemplaza el panel con el
+// mismo filtro que estaba activo, así el contador y la lista quedan al día, y cierra el modal.
+templ ModalConfirmarBorrado(p db.Producto, categoria string) {
+	<div
+		class="modal-fondo"
+		hx-get="/admin/productos/nuevo/cerrar"
+		hx-target="#modal"
+		hx-swap="innerHTML"
+		hx-trigger="click target:.modal-fondo, keyup[key=='Escape'] from:body"
+	>
+		<div class="modal chico" role="alertdialog" aria-modal="true" aria-labelledby="titulo-borrar" aria-describedby="texto-borrar">
+			<div class="modal-cabecera">
+				<h2 class="modal-titulo" id="titulo-borrar">¿BORRAR PRODUCTO?</h2>
+				<button
+					type="button"
+					class="cerrar"
+					aria-label="Cerrar"
+					hx-get="/admin/productos/nuevo/cerrar"
+					hx-target="#modal"
+				>
+					@IconoCerrar()
+				</button>
+			</div>
+			<div class="modal-cuerpo">
+				<p class="confirmar-texto" id="texto-borrar">
+					Vas a borrar <strong>{ p.Nombre }</strong> del menú. No se puede deshacer.
+				</p>
+			</div>
+			<div class="modal-pie pie-fin">
+				<button
+					type="button"
+					class="boton boton-secundario"
+					hx-get="/admin/productos/nuevo/cerrar"
+					hx-target="#modal"
+				>CANCELAR</button>
+				<button
+					type="button"
+					class="boton boton-peligro"
+					hx-delete={ fmt.Sprintf("/admin/productos/%d?categoria=%s", p.ID, url.QueryEscape(categoria)) }
+					hx-target="#panel-productos"
+					hx-swap="outerHTML"
+				>BORRAR</button>
+			</div>
+		</div>
+	</div>
+}
+
 // ModalCerradoOOB vacía el modal desde una respuesta que apunta a otro lado (el alta exitosa
 // reemplaza el panel de productos y, de paso, cierra el modal).
 templ ModalCerradoOOB() {
 	<div id="modal" hx-swap-oob="innerHTML"></div>
 }
 
-// camposProducto son los campos del alta: nombre, categoría, los dos precios y la descripción.
+// camposProducto son los campos del alta: nombre, categoría, los dos precios, la descripción y la foto.
 templ camposProducto(f FormProducto) {
 	<div class="campo">
 		<label for="nombre">Nombre</label>
@@ -102,11 +167,17 @@ templ camposProducto(f FormProducto) {
 	<div class="campos-fila">
 		<div class="campo">
 			<label for="precio">Precio simple</label>
-			<input id="precio" name="precio" type="number" min="0" step="0.01" value={ f.Precio } required/>
+			<div class="campo-precio">
+				<span class="prefijo" aria-hidden="true">$</span>
+				<input id="precio" name="precio" type="number" inputmode="decimal" min="0" step="0.01" value={ f.Precio } required/>
+			</div>
 		</div>
 		<div class="campo">
 			<label for="precio_doble">Precio doble (opcional)</label>
-			<input id="precio_doble" name="precio_doble" type="number" min="0" step="0.01" value={ f.PrecioDoble }/>
+			<div class="campo-precio">
+				<span class="prefijo" aria-hidden="true">$</span>
+				<input id="precio_doble" name="precio_doble" type="number" inputmode="decimal" min="0" step="0.01" value={ f.PrecioDoble }/>
+			</div>
 		</div>
 	</div>
 	<p class="ayuda">Dejá el precio doble vacío si el producto no tiene versión doble (bebidas, acompañamientos).</p>
@@ -114,4 +185,73 @@ templ camposProducto(f FormProducto) {
 		<label for="descripcion">Descripción</label>
 		<textarea id="descripcion" name="descripcion" rows="3">{ f.Descripcion }</textarea>
 	</div>
+	<div class="campo">
+		<span class="campo-label">Foto (opcional)</span>
+		@SubirFoto("Tocá para elegir una foto", false)
+	</div>
+}
+
+// SubirFoto es la zona para cargar la foto: un recuadro (o una píldora, si es compacto) con el
+// input de archivo transparente encima. Así un clic en cualquier parte abre el selector y soltar
+// una foto la carga, sin JS: eso lo hace el navegador con su propio input. Al elegirla, htmx la
+// manda sola a foto-previa y la respuesta (vista previa o error) cae en .foto-previa, que el CSS
+// muestra en lugar del texto de siempre. hx-target y hx-swap van explícitos para no heredar los
+// del form, que apuntan al panel.
+templ SubirFoto(titulo string, compacto bool) {
+	<label class={ "subir-foto", templ.KV("compacto", compacto) }>
+		<input
+			class="subir-foto-input"
+			type="file"
+			name="foto"
+			accept="image/jpeg,image/png,image/webp"
+			hx-post="/admin/productos/foto-previa"
+			hx-trigger="change"
+			hx-encoding="multipart/form-data"
+			hx-include="this"
+			hx-target="next .foto-previa"
+			hx-swap="innerHTML"
+		/>
+		<span class="subir-foto-vacia">
+			@IconoSubir()
+			<span class="subir-foto-titulo">{ titulo }</span>
+			if !compacto {
+				<span class="subir-foto-sub">o arrastrala acá · JPG, PNG o WEBP, hasta 5 MB</span>
+			}
+		</span>
+		<span class="foto-previa" aria-live="polite"></span>
+	</label>
+}
+
+// FotoPrevia confirma que la foto elegida sirve: la miniatura, el nombre y el peso. src es un data
+// URI que arma el servidor con un tipo de imagen ya validado.
+templ FotoPrevia(nombre string, peso int, src string) {
+	<img class="foto-previa-img" src={ templ.SafeURL(src) } alt=""/>
+	<span class="foto-previa-textos">
+		<span class="foto-previa-nombre">✓ { nombre }</span>
+		<span class="foto-previa-detalle">{ pesoLegible(peso) } · Tocá para cambiarla</span>
+	</span>
+}
+
+// FotoPreviaError avisa en el momento que la foto elegida no sirve (formato o tamaño).
+templ FotoPreviaError(msg string) {
+	<span class="foto-error">✕ { msg }</span>
+}
+
+// pesoLegible pasa bytes a "350 KB" o "1,2 MB".
+func pesoLegible(bytes int) string {
+	const kb, mb = 1024, 1024 * 1024
+	if bytes < mb {
+		return fmt.Sprintf("%d KB", (bytes+kb-1)/kb)
+	}
+	return strings.Replace(fmt.Sprintf("%.1f MB", float64(bytes)/mb), ".", ",", 1)
+}
+
+// Miniatura es la foto chica de un producto en la tabla, o un recuadro vacío si no tiene. alt va
+// vacío porque el nombre del producto está al lado.
+templ Miniatura(ruta string) {
+	if ruta != "" {
+		<img class="miniatura" src={ templ.URL(ruta) } alt="" loading="lazy"/>
+	} else {
+		<span class="miniatura vacia" aria-hidden="true"></span>
+	}
 }

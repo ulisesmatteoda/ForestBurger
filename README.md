@@ -100,7 +100,10 @@ login. La raíz `/` por ahora redirige al panel; más adelante va a ser el menú
 | `GET /admin/productos/{id}/editar` | Devuelve la fila del producto en modo edición, con sus datos cargados    |
 | `PUT /admin/productos/{id}`        | Actualiza el producto; devuelve la fila en modo lectura (o en edición con el error) |
 | `GET /admin/productos/{id}`        | Devuelve la fila en modo lectura (botón "Cancelar" de la edición)        |
-| `DELETE /admin/productos/{id}`     | Borra el producto; responde 200 vacío y HTMX quita la fila              |
+| `GET /admin/productos/{id}/borrar` | Abre el modal que pide confirmar el borrado (`?categoria=` es el filtro activo) |
+| `POST /admin/productos/foto-previa` | Valida la foto elegida y devuelve su vista previa (o el error). No guarda nada |
+| `GET /uploads/<archivo>`           | Sirve las fotos de los productos (público: las va a usar el menú). No lista la carpeta |
+| `DELETE /admin/productos/{id}`     | Borra el producto. Con htmx devuelve el panel con el mismo filtro (`?categoria=`) y cierra el modal (OOB); sin htmx, 303 a `/admin` |
 
 ### Alta de productos (modal)
 
@@ -124,6 +127,38 @@ Arriba de la lista hay chips (Todos, Hamburguesa, Veggie, Acompañamiento, Bebid
 Cada chip es un link a `/admin?categoria=<valor>`: con htmx pide solo el panel y actualiza la URL
 (`hx-push-url`), así el filtro sobrevive a F5 y se puede compartir; sin JS funciona como un link
 común y devuelve la página completa.
+
+### Fotos de los productos
+
+Cada producto puede tener una foto (es opcional).
+
+- **Cargarla:** el modal de alta tiene un campo "Foto". En la edición en línea de cada fila se
+  puede elegir otra (reemplaza a la anterior) o marcar "Quitar foto". Por eso esos formularios
+  viajan como `multipart/form-data` (`hx-encoding`).
+- **Vista previa:** apenas se elige la foto (tocando la zona o arrastrándola encima), htmx la
+  manda sola a `POST /admin/productos/foto-previa`, que la valida y devuelve la miniatura con el
+  nombre y el peso, o el error en el momento (formato o tamaño). Esa ruta no guarda nada: la
+  foto se guarda recién con el producto. Es sin JavaScript propio, solo atributos de htmx.
+- **Qué se acepta:** JPG, PNG o WEBP, hasta 5 MB. El tipo se mira por el contenido del archivo,
+  no por la extensión (que se puede falsear).
+- **Dónde queda:** el archivo va a la carpeta `uploads/` con un nombre al azar, y la base guarda
+  solo su ruta en `producto.imagen_url` (por ejemplo `/uploads/f2057e8bc36969de.png`); NULL si no
+  tiene. La app la sirve en `/uploads/`.
+- **Limpieza:** al cambiar o quitar la foto, y al borrar el producto, se borra el archivo viejo.
+  `make clean` (y todo lo que arranca con la base vacía) vacía `uploads/`, porque sin la base
+  esas fotos no las usa nadie. La carpeta está en `.gitignore`: las fotos no se suben al repo.
+- **En la tabla:** cada fila muestra una miniatura; sin foto, un recuadro vacío.
+- Si al guardar hay un error, el navegador no deja volver a completar el campo de archivo: el
+  mensaje avisa "Volvé a elegir la foto.".
+
+### Borrar un producto
+
+El tacho de cada fila no usa el `confirm()` del navegador (que no se puede estilizar): abre un
+modal chico en el mismo `<div id="modal">` que el alta, con el nombre del producto y los botones
+CANCELAR y BORRAR. BORRAR hace el `DELETE` y el servidor devuelve el panel entero con el filtro
+que estaba activo, así el contador y el mensaje de lista vacía quedan al día, y cierra el modal.
+El filtro viaja en `?categoria=`; en las filas que devuelve la edición en línea, el servidor lo
+saca de la URL de la página (header `HX-Current-URL` que manda htmx).
 
 ### Editar un producto
 
@@ -156,7 +191,13 @@ nunca se guarda ni se muestra).
 - **La base:** `make crear-admin` levanta Postgres si no está corriendo, pero **sin borrarlo**, y
   crea la tabla `admin` si todavía no existe. Si tenés `make run` en otra terminal, usa esa misma
   base. Ojo: `make run`, `make run-app` y `make test` arrancan con la base vacía, así que después
-  de correrlos hay que volver a crear los admins.
+  de correrlos hay que volver a crear los admins (o usar el admin de desarrollo, abajo).
+- **Admin de desarrollo:** para no correr `make crear-admin` después de cada `make run`, en el
+  `.env` de tu máquina podés poner `DEV_ADMIN_EMAIL` y `DEV_ADMIN_PASSWORD`. Si están las dos, al
+  arrancar la app crea (o actualiza) ese admin y avisa "Admin de desarrollo listo: <email>" (la
+  contraseña nunca se muestra). El mail tiene que estar en `ADMIN_EMAILS` y la contraseña tener al
+  menos 8 caracteres; si no, avisa el motivo y arranca igual. **Son solo para desarrollo: en
+  producción no se ponen**, y sin ellas no hace nada.
 
 ## Login
 
@@ -170,8 +211,11 @@ Todo lo que está bajo `/admin` pide una sesión; `/`, `/login` y `/static/` son
   mail y hasta cuándo vale (7 días), y la firma prueba que la armó el servidor. Es `HttpOnly` (el
   JavaScript de la página no la lee) y `SameSite=Lax`.
 - **El middleware** `RequiereAdmin` envuelve todo `/admin`. Sin sesión válida, redirige al login
-  (con htmx, manda `HX-Redirect: /login`). Además vuelve a mirar `ADMIN_EMAILS` en cada pedido:
-  sacar un mail de la lista le corta el acceso aunque su cookie no haya vencido.
+  (con htmx, manda `HX-Redirect: /login`). En cada pedido vuelve a mirar `ADMIN_EMAILS` y que el
+  admin **siga existiendo en la base**: sacar un mail de la lista, o borrar el admin (en desarrollo
+  pasa en cada `make run`), le corta el acceso aunque su cookie no haya vencido. Si la cookie es de
+  un admin que ya no existe, además la borra del navegador; `/login` hace lo mismo y muestra el
+  formulario en vez de mandar al panel.
 - **Salir:** el botón "Salir" de la barra lateral borra la cookie.
 
 Variables del `.env` (el Makefile se las pasa a la app):
@@ -181,6 +225,7 @@ Variables del `.env` (el Makefile se las pasa a la app):
 | `SESSION_SECRET` | Clave para firmar las cookies. **Obligatoria**, de al menos 32 caracteres; sin ella la app no arranca. Generala con `openssl rand -hex 32`. **Cambiarla cierra la sesión de todos.** |
 | `COOKIE_SECURE`  | `true` en producción (HTTPS), así la cookie solo viaja cifrada. En localhost, `false`. |
 | `ADMIN_EMAILS`   | Mails que pueden ser admin, separados por coma (ver "Admins"). |
+| `DEV_ADMIN_EMAIL`, `DEV_ADMIN_PASSWORD` | **Solo desarrollo.** Admin que se crea solo al arrancar (ver "Admins"). |
 
 ## Notas
 

@@ -18,8 +18,6 @@ import (
 	"golang.org/x/term"
 )
 
-const largoMinimo = 8
-
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
@@ -65,8 +63,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if len(password) < largoMinimo {
-		return fmt.Errorf("la contraseña tiene que tener al menos %d caracteres", largoMinimo)
+	if len(password) < auth.LargoMinimoPassword {
+		return fmt.Errorf("la contraseña tiene que tener al menos %d caracteres", auth.LargoMinimoPassword)
 	}
 	repetida, err := leerPassword("Repetí la contraseña: ")
 	if err != nil {

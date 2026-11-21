@@ -12,12 +12,14 @@ import (
 )
 
 type API struct {
-	q *sqlc.Queries
+	q        *sqlc.Queries
+	dirFotos string // carpeta donde se guardan las fotos de los productos
 }
 
-// NewAPI arma la API con las queries de sqlc (q queda privado al paquete).
+// NewAPI arma la API con las queries de sqlc (q queda privado al paquete). Las fotos van a
+// uploads/; los tests la cambian por una carpeta temporal.
 func NewAPI(q *sqlc.Queries) *API {
-	return &API{q: q}
+	return &API{q: q, dirFotos: "uploads"}
 }
 
 // ---------- DTOs (lo que ve el cliente de la API) ----------

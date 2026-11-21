@@ -6,12 +6,14 @@ import "net/http"
 // La usan main.go y los tests, así los tests prueban exactamente lo mismo que corre.
 func (a *API) Rutas(mux *http.ServeMux) {
 	a.RutasAuth(mux)
+	// Las fotos son públicas: las va a mostrar el menú para los clientes.
+	mux.Handle("GET /uploads/", a.servirFotos())
 
 	// El panel va en un mux propio y entra entero por RequiereAdmin: una ruta nueva de /admin
 	// queda protegida sola, sin acordarse de envolverla.
 	admin := http.NewServeMux()
 	a.RutasAdmin(admin)
-	protegido := RequiereAdmin(admin)
+	protegido := a.RequiereAdmin(admin)
 	mux.Handle("/admin", protegido)
 	mux.Handle("/admin/", protegido)
 }
@@ -31,8 +33,10 @@ func (a *API) RutasAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/productos/nuevo", a.NuevoProducto)
 	mux.HandleFunc("GET /admin/productos/nuevo/cerrar", a.CerrarModal)
 	mux.HandleFunc("POST /admin/productos", a.CrearProducto)
+	mux.HandleFunc("POST /admin/productos/foto-previa", a.FotoPrevia)
 	mux.HandleFunc("GET /admin/productos/{id}", a.FilaProducto)
 	mux.HandleFunc("GET /admin/productos/{id}/editar", a.FormEditarProducto)
+	mux.HandleFunc("GET /admin/productos/{id}/borrar", a.ConfirmarBorrado)
 	mux.HandleFunc("PUT /admin/productos/{id}", a.ActualizarProducto)
 	mux.HandleFunc("DELETE /admin/productos/{id}", a.BorrarProducto)
 }

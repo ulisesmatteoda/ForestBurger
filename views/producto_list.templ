@@ -65,7 +65,7 @@ templ ProductoList(productos []db.Producto, categoria string, nuevoID int32) {
                 </thead>
                 <tbody>
                     for _, p := range productos {
-                        @filaProducto(p, p.ID == nuevoID)
+                        @filaProducto(p, p.ID == nuevoID, categoria)
                     }
                 </tbody>
             </table>
@@ -74,19 +74,25 @@ templ ProductoList(productos []db.Producto, categoria string, nuevoID int32) {
 }
 
 // ProductoFila renderiza una fila de la tabla en modo lectura, con los botones de editar y borrar.
-// También es lo que devuelve el servidor al guardar o cancelar una edición.
-templ ProductoFila(p db.Producto) {
-    @filaProducto(p, false)
+// También es lo que devuelve el servidor al guardar o cancelar una edición. categoria es el filtro
+// activo de la lista: el borrado lo necesita para devolver el panel con el mismo filtro.
+templ ProductoFila(p db.Producto, categoria string) {
+    @filaProducto(p, false, categoria)
 }
 
 // filaProducto es la fila en modo lectura; nuevo la resalta (el producto recién creado).
-templ filaProducto(p db.Producto, nuevo bool) {
+templ filaProducto(p db.Producto, nuevo bool, categoria string) {
     <tr class={ templ.KV("nuevo", nuevo) }>
         <td>
-            <div class="producto-nombre">{ p.Nombre }</div>
-            if p.Descripcion.Valid {
-                <div class="producto-desc">{ p.Descripcion.String }</div>
-            }
+            <div class="producto-celda">
+                @Miniatura(p.ImagenUrl.String)
+                <div>
+                    <div class="producto-nombre">{ p.Nombre }</div>
+                    if p.Descripcion.Valid {
+                        <div class="producto-desc">{ p.Descripcion.String }</div>
+                    }
+                </div>
+            </div>
         </td>
         <td><span class="tag">{ etiquetaCategoria(p.Categoria) }</span></td>
         <td class="precio">{ formatPrecio(p.Precio) }</td>
@@ -111,10 +117,9 @@ templ filaProducto(p db.Producto, nuevo bool) {
                 <button
                     class="boton-icono peligro"
                     aria-label={ "Borrar " + p.Nombre }
-                    hx-delete={ fmt.Sprintf("/admin/productos/%d", p.ID) }
-                    hx-target="closest tr"
-                    hx-swap="outerHTML"
-                    hx-confirm="¿Estás seguro?"
+                    hx-get={ fmt.Sprintf("/admin/productos/%d/borrar?categoria=%s", p.ID, url.QueryEscape(categoria)) }
+                    hx-target="#modal"
+                    hx-swap="innerHTML"
                 >
                     @IconoBorrar()
                 </button>
@@ -126,7 +131,9 @@ templ filaProducto(p db.Producto, nuevo bool) {
 // ProductoFilaEditar renderiza la misma fila con inputs en cada celda. "Guardar" hace PUT con
 // los valores de la fila (hx-include) y "Cancelar" vuelve a pedir la fila en modo lectura.
 // Si el servidor rechaza los datos, devuelve esta misma fila con f.Error y lo que se escribió.
-templ ProductoFilaEditar(id int32, f FormProducto) {
+// foto es la ruta de la foto actual ("" si no tiene): se muestra para elegir otra o quitarla, y por
+// eso Guardar va como multipart.
+templ ProductoFilaEditar(id int32, f FormProducto, foto string) {
     <tr class="fila-edicion">
         <td>
             if f.Error != "" {
@@ -134,6 +141,22 @@ templ ProductoFilaEditar(id int32, f FormProducto) {
             }
             <input class="input-fila" type="text" name="nombre" value={ f.Nombre } aria-label="Nombre"/>
             <textarea class="input-fila" name="descripcion" rows="2" aria-label="Descripción">{ f.Descripcion }</textarea>
+            <div class="editar-foto">
+                @Miniatura(foto)
+                <div class="editar-foto-campos">
+                    if foto != "" {
+                        @SubirFoto("Cambiar foto", true)
+                    } else {
+                        @SubirFoto("Elegir foto", true)
+                    }
+                    if foto != "" {
+                        <label class="quitar-foto">
+                            <input type="checkbox" name="quitar_foto" value="1"/>
+                            Quitar foto
+                        </label>
+                    }
+                </div>
+            </div>
         </td>
         <td>
             <select class="input-fila" name="categoria" aria-label="Categoría">
@@ -146,10 +169,16 @@ templ ProductoFilaEditar(id int32, f FormProducto) {
             </select>
         </td>
         <td>
-            <input class="input-fila" type="number" name="precio" min="0" step="0.01" value={ f.Precio } aria-label="Precio simple"/>
+            <div class="campo-precio">
+                <span class="prefijo" aria-hidden="true">$</span>
+                <input class="input-fila" type="number" inputmode="decimal" name="precio" min="0" step="0.01" value={ f.Precio } aria-label="Precio simple"/>
+            </div>
         </td>
         <td>
-            <input class="input-fila" type="number" name="precio_doble" min="0" step="0.01" value={ f.PrecioDoble } aria-label="Precio doble"/>
+            <div class="campo-precio">
+                <span class="prefijo" aria-hidden="true">$</span>
+                <input class="input-fila" type="number" inputmode="decimal" name="precio_doble" min="0" step="0.01" value={ f.PrecioDoble } aria-label="Precio doble"/>
+            </div>
         </td>
         <td>
             <div class="acciones">
@@ -157,6 +186,7 @@ templ ProductoFilaEditar(id int32, f FormProducto) {
                     type="button"
                     class="btn-fila btn-guardar"
                     hx-put={ fmt.Sprintf("/admin/productos/%d", id) }
+                    hx-encoding="multipart/form-data"
                     hx-include="closest tr"
                     hx-target="closest tr"
                     hx-swap="outerHTML"

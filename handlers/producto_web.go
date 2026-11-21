@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -56,17 +58,33 @@ func (a *API) CerrarModal(w http.ResponseWriter, r *http.Request) {
 // productos (el nuevo resaltado) y cierra el modal por OOB; si hay error, redirige la respuesta al
 // modal (HX-Retarget) para mostrar el mensaje sin tocar la tabla. Sin htmx: redirect o página.
 func (a *API) CrearProducto(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Formulario inválido", http.StatusBadRequest)
+	if err := parsearFormulario(w, r); err != nil {
+		a.errorAlta(w, r, views.FormProducto{Error: errorFormulario(err)})
 		return
 	}
 	form := formDesdeRequest(r)
 
+	// Primero se valida todo (datos y foto); recién después se guarda algo.
 	req, msg := armarRequest(form)
+	foto, msgFoto := leerFoto(r)
+	if msg == "" {
+		msg = msgFoto
+	}
 	if msg != "" {
-		form.Error = msg
+		form.Error = conAvisoFoto(msg, r)
 		a.errorAlta(w, r, form)
 		return
+	}
+
+	imagen := sql.NullString{}
+	if foto != nil {
+		ruta, err := a.guardarFoto(foto)
+		if err != nil {
+			form.Error = conAvisoFoto("No se pudo guardar la foto", r)
+			a.errorAlta(w, r, form)
+			return
+		}
+		imagen = sql.NullString{String: ruta, Valid: true}
 	}
 
 	p, err := a.q.CreateProducto(r.Context(), sqlc.CreateProductoParams{
@@ -75,9 +93,11 @@ func (a *API) CrearProducto(w http.ResponseWriter, r *http.Request) {
 		Precio:      req.precioStr(),
 		PrecioDoble: req.precioDobleNull(),
 		Descripcion: req.descripcionNull(),
+		ImagenUrl:   imagen,
 	})
 	if err != nil {
-		form.Error = "No se pudo guardar el producto"
+		a.borrarFoto(imagen.String) // el producto no se guardó: la foto quedaría huérfana
+		form.Error = conAvisoFoto("No se pudo guardar el producto", r)
 		a.errorAlta(w, r, form)
 		return
 	}
@@ -119,7 +139,7 @@ func (a *API) FilaProducto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	views.ProductoFila(p).Render(r.Context(), w)
+	views.ProductoFila(p, categoriaActual(r)).Render(r.Context(), w)
 }
 
 // FormEditarProducto: GET /admin/productos/{id}/editar
@@ -129,7 +149,7 @@ func (a *API) FormEditarProducto(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	a.renderFilaEditar(w, r, p.ID, formDesdeProducto(p))
+	a.renderFilaEditar(w, r, p.ID, formDesdeProducto(p), p.ImagenUrl.String)
 }
 
 // ActualizarProducto: PUT /admin/productos/{id}
@@ -142,16 +162,34 @@ func (a *API) ActualizarProducto(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id inválido", http.StatusBadRequest)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Formulario inválido", http.StatusBadRequest)
+	// Se trae antes para saber qué foto tenía (y avisar si ya no existe).
+	anterior, err := a.q.GetProducto(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		productoNoEncontrado(w)
+		return
+	}
+	if err != nil {
+		http.Error(w, "No se pudo cargar el producto", http.StatusInternalServerError)
+		return
+	}
+	fotoActual := anterior.ImagenUrl.String
+
+	if err := parsearFormulario(w, r); err != nil {
+		form := formDesdeProducto(anterior)
+		form.Error = errorFormulario(err)
+		a.renderFilaEditar(w, r, id, form, fotoActual)
 		return
 	}
 	form := formDesdeRequest(r)
 
 	req, msg := armarRequest(form)
+	foto, msgFoto := leerFoto(r)
+	if msg == "" {
+		msg = msgFoto
+	}
 	if msg != "" {
-		form.Error = msg
-		a.renderFilaEditar(w, r, id, form)
+		form.Error = conAvisoFoto(msg, r)
+		a.renderFilaEditar(w, r, id, form, fotoActual)
 		return
 	}
 
@@ -170,29 +208,119 @@ func (a *API) ActualizarProducto(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		form.Error = "No se pudo actualizar el producto"
-		a.renderFilaEditar(w, r, id, form)
+		a.renderFilaEditar(w, r, id, form, fotoActual)
 		return
 	}
 
+	// La foto va aparte: una nueva reemplaza a la anterior; "Quitar foto" la saca.
+	if foto != nil || r.FormValue("quitar_foto") == "1" {
+		nueva := sql.NullString{}
+		if foto != nil {
+			ruta, err := a.guardarFoto(foto)
+			if err != nil {
+				form.Error = conAvisoFoto("Se guardaron los datos, pero no la foto", r)
+				a.renderFilaEditar(w, r, id, form, fotoActual)
+				return
+			}
+			nueva = sql.NullString{String: ruta, Valid: true}
+		}
+		if p, err = a.q.UpdateImagenProducto(r.Context(), sqlc.UpdateImagenProductoParams{ID: id, ImagenUrl: nueva}); err != nil {
+			a.borrarFoto(nueva.String)
+			form.Error = conAvisoFoto("Se guardaron los datos, pero no la foto", r)
+			a.renderFilaEditar(w, r, id, form, fotoActual)
+			return
+		}
+		a.borrarFoto(fotoActual)
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	views.ProductoFila(p).Render(r.Context(), w)
+	views.ProductoFila(p, categoriaActual(r)).Render(r.Context(), w)
 }
 
-// BorrarProducto: DELETE /admin/productos/{id}
+// FotoPrevia: POST /admin/productos/foto-previa
+// La pide htmx apenas se elige una foto, así se ve que quedó cargada antes de guardar. Valida con
+// las mismas reglas que el guardado y devuelve la vista previa o el error; no guarda nada en disco
+// (la foto todavía no es de ningún producto), por eso la miniatura va como data URI. Responde
+// siempre 200 porque htmx no hace el swap de los 4xx; sin archivo (se canceló el selector), vacío.
+func (a *API) FotoPrevia(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := parsearFormulario(w, r); err != nil {
+		views.FotoPreviaError(errorFormulario(err)).Render(r.Context(), w)
+		return
+	}
+	foto, msg := leerFoto(r)
+	if msg != "" {
+		views.FotoPreviaError(msg).Render(r.Context(), w)
+		return
+	}
+	if foto == nil {
+		return
+	}
+	src := "data:" + foto.tipo + ";base64," + base64.StdEncoding.EncodeToString(foto.datos)
+	views.FotoPrevia(foto.nombre, len(foto.datos), src).Render(r.Context(), w)
+}
+
+// ConfirmarBorrado: GET /admin/productos/{id}/borrar
+// Abre el modal que pide confirmar el borrado. ?categoria es el filtro activo, para que después
+// del borrado el panel vuelva con el mismo filtro.
+func (a *API) ConfirmarBorrado(w http.ResponseWriter, r *http.Request) {
+	p, ok := a.productoDeRuta(w, r)
+	if !ok {
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	views.ModalConfirmarBorrado(p, categoriaActual(r)).Render(r.Context(), w)
+}
+
+// BorrarProducto: DELETE /admin/productos/{id}?categoria=<filtro>
+// Con htmx devuelve el panel con el filtro que estaba activo (así el contador queda bien) y
+// cierra el modal de confirmación por OOB. Sin htmx vuelve al panel.
 func (a *API) BorrarProducto(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {
 		http.Error(w, "id inválido", http.StatusBadRequest)
 		return
 	}
+	// Se trae antes para borrar también su foto del disco.
+	anterior, err := a.q.GetProducto(r.Context(), id)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "No se pudo cargar el producto", http.StatusInternalServerError)
+		return
+	}
 	if err := a.q.DeleteProducto(r.Context(), id); err != nil {
 		http.Error(w, "No se pudo borrar el producto", http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	a.borrarFoto(anterior.ImagenUrl.String)
+	if !esHTMX(r) {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+	categoria := categoriaActual(r)
+	productos, err := a.listarProductos(r.Context(), categoria)
+	if err != nil {
+		http.Error(w, "No se pudieron cargar los productos", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	views.ProductosPanel(productos, categoria, 0).Render(r.Context(), w)
+	views.ModalCerradoOOB().Render(r.Context(), w)
 }
 
 // ---------- helpers ----------
+
+// conAvisoFoto agrega "Volvé a elegir la foto." al error si el pedido traía una: el navegador no
+// deja volver a completar un input de archivo, así que al mostrar el error el campo queda vacío.
+func conAvisoFoto(msg string, r *http.Request) string {
+	if r.MultipartForm != nil {
+		for _, f := range r.MultipartForm.File[campoFoto] {
+			if f.Size > 0 {
+				return msg + ". Volvé a elegir la foto."
+			}
+		}
+	}
+	return msg
+}
 
 // formDesdeRequest lee los campos del formulario. Todo llega como texto.
 func formDesdeRequest(r *http.Request) views.FormProducto {
@@ -268,9 +396,9 @@ func productoNoEncontrado(w http.ResponseWriter) {
 }
 
 // renderFilaEditar renderiza la fila de un producto en modo edición.
-func (a *API) renderFilaEditar(w http.ResponseWriter, r *http.Request, id int32, form views.FormProducto) {
+func (a *API) renderFilaEditar(w http.ResponseWriter, r *http.Request, id int32, form views.FormProducto, foto string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	views.ProductoFilaEditar(id, form).Render(r.Context(), w)
+	views.ProductoFilaEditar(id, form, foto).Render(r.Context(), w)
 }
 
 // renderIndex trae los productos (filtrados por categoria, "" = todos) y renderiza la página
@@ -284,6 +412,22 @@ func (a *API) renderIndex(w http.ResponseWriter, r *http.Request, categoria stri
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	views.IndexPage(productos, categoria, modal).Render(r.Context(), w)
+}
+
+// categoriaActual es el filtro activo de la lista: el de ?categoria=, o si el pedido no lo trae
+// (Guardar y Cancelar de la edición en línea), el de la página desde donde lo mandó htmx
+// (header HX-Current-URL). Una categoría desconocida cuenta como "todos" ("").
+func categoriaActual(r *http.Request) string {
+	categoria := r.URL.Query().Get("categoria")
+	if categoria == "" {
+		if pagina, err := url.Parse(r.Header.Get("HX-Current-URL")); err == nil {
+			categoria = pagina.Query().Get("categoria")
+		}
+	}
+	if !views.CategoriaConocida(categoria) {
+		return ""
+	}
+	return categoria
 }
 
 // listarProductos trae los de una categoría, o todos si categoria es "".

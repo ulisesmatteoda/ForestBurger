@@ -3,7 +3,7 @@ DB_URL   := postgres://usuario:password@localhost:5432/forestburger?sslmode=disa
 
 # Estas variables salen del .env y las leen crear-admin y la app (go no lee el .env solo).
 -include .env
-export ADMIN_EMAILS SESSION_SECRET COOKIE_SECURE
+export ADMIN_EMAILS SESSION_SECRET COOKIE_SECURE DEV_ADMIN_EMAIL DEV_ADMIN_PASSWORD
 
 ESPERAR_DB = until docker compose exec -T database sh -c 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'; do sleep 1; done
 
@@ -23,8 +23,10 @@ build: generate
 .env:
 	@cp .env.example .env
 
+# Borra la base y, con ella, las fotos subidas: sin la base nadie las usa y quedarían huérfanas.
 down:
 	@docker compose down -v
+	@find uploads -type f ! -name .gitkeep -delete 2>/dev/null || true
 
 up: down .env
 	@docker compose up -d
@@ -71,5 +73,4 @@ crear-admin: generate .env
 
 # Tareas posteriores -------------------------------------------------
 
-clean:
-	@docker compose down -v
+clean: down

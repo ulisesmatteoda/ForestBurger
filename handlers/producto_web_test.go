@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -70,6 +71,7 @@ const (
 func setup(t *testing.T) (http.Handler, *sqlc.Queries) {
 	t.Helper()
 	mux, q := setupSinSesion(t)
+	guardarAdminTest(t, q)
 	return conSesion(mux, adminTest), q
 }
 
@@ -84,6 +86,14 @@ func conSesion(h http.Handler, email string) http.Handler {
 // setupSinSesion abre la base, la deja vacía, configura la sesión y arma el mux con las mismas
 // rutas que main.go (login público y /admin protegido). Los pedidos van sin cookie.
 func setupSinSesion(t *testing.T) (*http.ServeMux, *sqlc.Queries) {
+	t.Helper()
+	mux, q, _ := setupAPI(t)
+	return mux, q
+}
+
+// setupAPI es setupSinSesion devolviendo también la API, para los tests que miran la carpeta de
+// fotos (una temporal por test, así no se ensucia uploads/).
+func setupAPI(t *testing.T) (*http.ServeMux, *sqlc.Queries, *API) {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -111,9 +121,10 @@ func setupSinSesion(t *testing.T) (*http.ServeMux, *sqlc.Queries) {
 
 	q := sqlc.New(conn)
 	api := NewAPI(q)
+	api.dirFotos = t.TempDir()
 	mux := http.NewServeMux()
 	api.Rutas(mux)
-	return mux, q
+	return mux, q, api
 }
 
 // postForm manda el alta de productos; con htmx=true, como la manda el modal (header HX-Request).
@@ -469,29 +480,106 @@ func TestCerrarModal_DevuelveVacio(t *testing.T) {
 	}
 }
 
-func TestBorrarProducto(t *testing.T) {
+func TestConfirmarBorrado_AbreElModal(t *testing.T) {
 	mux, q := setup(t)
 	p, err := q.CreateProducto(context.Background(), sqlc.CreateProductoParams{
-		Nombre: "Para borrar", Categoria: "burger", Precio: "100.00",
+		Nombre: "Coca-Cola", Categoria: "bebida", Precio: "2500.00",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	id := strconv.Itoa(int(p.ID))
 
-	req := httptest.NewRequest(http.MethodDelete, "/admin/productos/"+strconv.Itoa(int(p.ID)), nil)
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-
-	// 200 y cuerpo vacío: HTMX reemplaza la fila por nada.
+	rec := pedirPanel(mux, "/admin/productos/"+id+"/borrar?categoria=bebida", true)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, quiero 200", rec.Code)
 	}
-	if rec.Body.Len() != 0 {
-		t.Errorf("el cuerpo debería estar vacío, vino %q", rec.Body.String())
+	body := rec.Body.String()
+	for _, esperado := range []string{`role="alertdialog"`, "<strong>Coca-Cola</strong>", `hx-delete="/admin/productos/` + id + `?categoria=bebida"`, `hx-target="#panel-productos"`} {
+		if !strings.Contains(body, esperado) {
+			t.Errorf("el modal no contiene %q", esperado)
+		}
 	}
-	ps, _ := q.ListProductos(context.Background())
-	if len(ps) != 0 {
-		t.Errorf("el producto no se borró, quedan %d", len(ps))
+
+	if rec := pedirPanel(mux, "/admin/productos/9999/borrar", true); rec.Code != http.StatusNotFound {
+		t.Errorf("producto inexistente: status = %d, quiero 404", rec.Code)
+	}
+}
+
+func TestBorrarProducto(t *testing.T) {
+	mux, q := setup(t)
+	cargarHamburguesaYBebida(t, q)
+	ps, _ := q.ListProductosPorCategoria(context.Background(), "bebida")
+	id := strconv.Itoa(int(ps[0].ID))
+
+	// Desde la lista filtrada por bebida: vuelve el panel con ese filtro, ya sin la bebida.
+	req := httptest.NewRequest(http.MethodDelete, "/admin/productos/"+id+"?categoria=bebida", nil)
+	req.Header.Set("HX-Request", "true")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, quiero 200", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, esperado := range []string{`id="panel-productos"`, `<div id="modal" hx-swap-oob="innerHTML"></div>`, "No hay productos en esta categoría.", `class="chip activo" href="/admin?categoria=bebida"`} {
+		if !strings.Contains(body, esperado) {
+			t.Errorf("la respuesta no contiene %q", esperado)
+		}
+	}
+	if strings.Contains(body, "Coca-Cola") {
+		t.Error("la bebida borrada no tendría que aparecer")
+	}
+	todos, _ := q.ListProductos(context.Background())
+	if len(todos) != 1 {
+		t.Errorf("quedan %d productos, quiero 1 (la hamburguesa)", len(todos))
+	}
+}
+
+func TestBorrarProducto_SinHTMXRedirige(t *testing.T) {
+	mux, q := setup(t)
+	cargarHamburguesaYBebida(t, q)
+
+	rec := pedir(mux, http.MethodDelete, "/admin/productos/1", nil)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin" {
+		t.Errorf("status = %d, Location = %q; quiero 303 a /admin", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+// El confirm() del navegador quedó reemplazado por el modal: ningún template lo tiene que usar.
+func TestTemplates_NoUsanHXConfirm(t *testing.T) {
+	archivos, err := filepath.Glob("../views/*.templ")
+	if err != nil || len(archivos) == 0 {
+		t.Fatalf("no encontré los templates: %v", err)
+	}
+	for _, archivo := range archivos {
+		contenido, err := os.ReadFile(archivo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(contenido), "hx-confirm") {
+			t.Errorf("%s usa hx-confirm", archivo)
+		}
+	}
+}
+
+// Guardar una edición no recibe el filtro: lo toma de la página (HX-Current-URL), así el botón de
+// borrar de la fila devuelta sigue llevando el filtro activo.
+func TestActualizarProducto_FilaConservaElFiltro(t *testing.T) {
+	mux, q := setup(t)
+	p, id := crearParaEditar(t, q)
+
+	req := httptest.NewRequest(http.MethodPut, "/admin/productos/"+id, strings.NewReader(url.Values{
+		"nombre": {p.Nombre}, "categoria": {"hamburguesa"}, "precio": {"9000"},
+	}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Current-URL", "http://localhost:8080/admin?categoria=hamburguesa")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if !strings.Contains(rec.Body.String(), `/borrar?categoria=hamburguesa"`) {
+		t.Errorf("la fila no lleva el filtro en el botón de borrar: %s", rec.Body.String())
 	}
 }
 

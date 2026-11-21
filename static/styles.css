@@ -109,6 +109,84 @@ a.chip { text-decoration: none; }
 }
 .tabla td { padding: 14px 16px; border-bottom: 1px solid var(--fb-divisor); vertical-align: middle; }
 .tabla tr:last-child td { border-bottom: 0; }
+/* Foto de cada producto: miniatura a la izquierda del nombre (recuadro vacío si no tiene). */
+.producto-celda { display: flex; align-items: center; gap: 14px; }
+.miniatura {
+  width: 56px; height: 56px; flex-shrink: 0;
+  border-radius: var(--fb-radius-md); object-fit: cover; display: block;
+}
+.miniatura.vacia { border: 1px dashed var(--fb-borde); background: var(--fb-superficie); }
+/* Zona para cargar la foto: el input de archivo va transparente encima de todo el recuadro, así
+   un clic abre el selector y soltar una foto la carga (lo hace el navegador, sin JS). */
+.subir-foto {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 28px 20px; text-align: center;
+  background: var(--fb-superficie);
+  border: 2px dashed var(--fb-borde); border-radius: var(--fb-radius-lg);
+  color: var(--fb-texto-secundario); cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.subir-foto svg { width: 32px; height: 32px; color: var(--fb-crema); margin-bottom: 4px; }
+.subir-foto-titulo { font-family: 'Barlow Semi Condensed', sans-serif; font-weight: 700; font-size: 18px; color: var(--fb-crema); }
+.subir-foto-sub { font-size: 13px; }
+.subir-foto .subir-foto-input {
+  position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%;
+  margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer;
+}
+.subir-foto-vacia { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.subir-foto.compacto .subir-foto-vacia { flex-direction: row; gap: 8px; }
+
+/* Vista previa: la manda el servidor apenas se elige la foto (htmx). Cuando está, reemplaza al
+   texto de siempre; el borde pasa a sólido si la foto sirve y a rojo si no. */
+.foto-previa:empty { display: none; }
+.subir-foto:has(.foto-previa:not(:empty)) .subir-foto-vacia { display: none; }
+.subir-foto:has(.foto-previa-img) { border-style: solid; border-color: var(--fb-crema); }
+.subir-foto:has(.foto-error) { border-color: var(--fb-peligro); }
+.foto-previa { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; text-align: left; }
+.foto-previa-img { width: 64px; height: 64px; flex-shrink: 0; border-radius: var(--fb-radius-md); object-fit: cover; }
+.foto-previa-textos { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.foto-previa-nombre {
+  font-family: 'Barlow Semi Condensed', sans-serif; font-weight: 700; font-size: 17px; color: var(--fb-crema);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.foto-previa-detalle { font-size: 13px; }
+.foto-error { width: 100%; text-align: center; font-weight: 600; color: var(--fb-peligro); }
+/* En la píldora de la fila: miniatura chica y solo el nombre. */
+.subir-foto.compacto .foto-previa { gap: 8px; }
+.subir-foto.compacto .foto-previa-img { width: 28px; height: 28px; border-radius: 6px; }
+.subir-foto.compacto .foto-previa-nombre { font-size: 14px; }
+.subir-foto.compacto .foto-previa-detalle { display: none; }
+.subir-foto.compacto .foto-error { font-size: 13px; }
+.subir-foto:hover { border-color: var(--fb-crema); background: rgba(255, 255, 255, 0.12); }
+.subir-foto:has(.subir-foto-input:focus-visible) { outline: 2px solid var(--fb-crema); outline-offset: 2px; }
+/* En la fila de edición: una píldora punteada en vez del recuadro grande. */
+.subir-foto.compacto {
+  flex-direction: row; justify-content: center; gap: 8px; max-width: 220px;
+  height: 40px; padding: 0 16px; border-radius: 999px; border-width: 1px;
+}
+.subir-foto.compacto svg { width: 18px; height: 18px; margin: 0; }
+.subir-foto.compacto .subir-foto-titulo { font-size: 15px; }
+
+/* Precios: sin las flechitas del navegador (con step 0.01 suben de a un centavo) y con "$" adelante. */
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.campo-precio { position: relative; display: flex; }
+.campo-precio input[type="number"] { width: 100%; padding-left: 32px; font-family: 'Barlow Semi Condensed', sans-serif; font-weight: 600; font-size: 18px; }
+.campo-precio .prefijo {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  font-family: 'Barlow Semi Condensed', sans-serif; font-weight: 700; font-size: 18px;
+  color: var(--fb-crema); pointer-events: none;
+}
+.fila-edicion .campo-precio { min-width: 104px; }
+/* En edición la fila es más ancha: Guardar y Cancelar van uno arriba del otro. */
+.fila-edicion .acciones { flex-direction: column; align-items: stretch; }
+.fila-edicion .campo-precio .input-fila { padding-left: 28px; font-size: 16px; }
+.fila-edicion .campo-precio .prefijo { left: 12px; font-size: 16px; }
+.editar-foto { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.editar-foto-campos { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.quitar-foto { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fb-texto-secundario); cursor: pointer; }
 .producto-nombre { font-family: 'Barlow Semi Condensed', sans-serif; font-weight: 700; font-size: 20px; color: var(--fb-texto); }
 .producto-desc { margin-top: 2px; font-size: 12px; line-height: 1.35; color: var(--fb-texto-secundario); }
 .precio { font-weight: 700; font-size: 15px; white-space: nowrap; }
@@ -207,6 +285,12 @@ legend.campo-label { padding: 0; margin-bottom: 6px; }
 }
 .modal-acciones { display: flex; gap: 12px; flex-wrap: wrap; }
 .boton-texto { background: transparent; border-color: transparent; color: var(--fb-texto-secundario); padding: 0 8px; }
+/* Confirmación de borrado: el mismo modal, más angosto y con la acción peligrosa a la derecha. */
+.modal.chico { max-width: 460px; }
+.boton-peligro { background: var(--fb-peligro); color: #3B0A06; }
+.confirmar-texto { margin: 0; font-size: 16px; line-height: 1.5; color: var(--fb-crema); }
+.confirmar-texto strong { color: var(--fb-texto); }
+.pie-fin { justify-content: flex-end; }
 tr.nuevo td { background: rgba(232, 230, 225, 0.12); }
 /* La lista de atrás no se scrollea mientras el modal está abierto. */
 body:has(.modal-fondo) { overflow: hidden; }
