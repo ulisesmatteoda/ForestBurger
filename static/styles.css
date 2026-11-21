@@ -25,14 +25,14 @@ body {
 
 .sidebar {
   width: 240px; flex-shrink: 0;
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 28px 20px;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 32px 20px;
   background: var(--fb-verde-oscuro);
   border-right: 1px solid var(--fb-divisor);
 }
-.sidebar-marca { display: flex; align-items: center; gap: 10px; padding-bottom: 8px; }
+.sidebar-marca { display: flex; align-items: center; gap: 10px; padding: 4px 8px 12px; }
 .logo { display: block; width: 100%; height: auto; }
-.sidebar-etiqueta { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--fb-texto-secundario); margin-bottom: 8px; }
+.sidebar-etiqueta { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--fb-texto-secundario); margin: 8px 4px 4px; }
 .sidebar-nav { display: flex; flex-direction: column; gap: 8px; }
 .nav-item {
   display: flex; align-items: center; height: 44px; padding: 0 14px;
@@ -42,9 +42,9 @@ body {
 .nav-item.activo { background: var(--fb-crema); color: var(--fb-verde); }
 
 .contenido {
-  flex: 1; min-width: 0;
-  display: flex; flex-direction: column; gap: 24px;
-  padding: 36px 40px;
+  flex: 1; min-width: 0; max-width: 1200px;
+  display: flex; flex-direction: column; gap: 28px;
+  padding: 40px 48px;
 }
 
 /* ---------- Encabezado ---------- */
@@ -58,7 +58,7 @@ h2 {
   margin: 0;
   font-size: 13px; font-weight: 700; letter-spacing: 2px; color: var(--fb-texto-secundario);
 }
-.subtitulo { margin: 4px 0 0; font-size: 15px; color: var(--fb-texto-secundario); }
+.subtitulo { margin: 8px 0 0; font-size: 15px; color: var(--fb-texto-secundario); }
 
 /* ---------- Botones ---------- */
 .boton {
@@ -91,7 +91,7 @@ h2 {
 a.chip { text-decoration: none; }
 
 /* ---------- Barra de filtros de la lista ---------- */
-.barra { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.barra { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 .conteo { font-size: 14px; color: var(--fb-texto-secundario); }
 
 .tag {
@@ -113,7 +113,7 @@ a.chip { text-decoration: none; }
 .producto-desc { margin-top: 2px; font-size: 12px; line-height: 1.35; color: var(--fb-texto-secundario); }
 .precio { font-weight: 700; font-size: 15px; white-space: nowrap; }
 .acciones { display: flex; gap: 8px; justify-content: flex-end; }
-.vacio { padding: 32px 16px; text-align: center; color: var(--fb-texto-secundario); }
+.vacio { padding: 56px 24px; text-align: center; color: var(--fb-texto-secundario); }
 
 /* ---------- Formulario ---------- */
 .campo { display: flex; flex-direction: column; gap: 6px; }
@@ -126,6 +126,35 @@ a.chip { text-decoration: none; }
 .campo input:focus, .campo textarea:focus { outline: 2px solid var(--fb-crema); outline-offset: 1px; }
 .error { padding: 12px 14px; border: 1px solid var(--fb-peligro); border-radius: var(--fb-radius-md); color: var(--fb-peligro); }
 
+/* ---------- Sesión (abajo de la barra lateral) ---------- */
+.sidebar-sesion {
+  margin-top: auto; padding: 16px 4px 0;
+  display: flex; flex-direction: column; gap: 12px;
+  border-top: 1px solid var(--fb-divisor);
+}
+.sidebar-admin { font-size: 13px; line-height: 1.3; color: var(--fb-texto-secundario); overflow-wrap: anywhere; }
+.sidebar-sesion .boton { width: 100%; height: 44px; font-size: 16px; }
+
+/* ---------- Login ---------- */
+.login-fondo {
+  min-height: 100vh; padding: 32px 16px;
+  display: flex; align-items: center; justify-content: center;
+}
+.login-tarjeta {
+  width: 100%; max-width: 400px;
+  display: flex; flex-direction: column; gap: 24px;
+  padding: 40px 32px;
+  background: var(--fb-verde-oscuro);
+  border: 1px solid var(--fb-divisor); border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+.login-logo { display: block; width: 200px; height: auto; margin: 0 auto; }
+.login-titulo { font-size: 28px; text-align: center; }
+.login-form { display: flex; flex-direction: column; gap: 18px; }
+.login-form .boton { margin-top: 8px; }
+.boton-ancho { width: 100%; }
+@media (max-width: 480px) { .login-tarjeta { padding: 28px 20px; } }
+
 /* ---------- Celular: la barra lateral pasa arriba ---------- */
 @media (max-width: 800px) {
   .app { flex-direction: column; }
@@ -133,6 +162,8 @@ a.chip { text-decoration: none; }
   .sidebar-etiqueta { display: none; }
   .sidebar-nav { flex-direction: row; margin-left: auto; }
   .contenido { padding: 24px 20px; }
+  .sidebar-sesion { margin-top: 0; padding-top: 0; border-top: 0; flex-direction: row; align-items: center; width: 100%; justify-content: space-between; }
+  .sidebar-sesion .boton { width: auto; }
 }
 
 fieldset.campo { border: 0; padding: 0; margin: 0; }

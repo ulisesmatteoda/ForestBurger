@@ -90,6 +90,9 @@ login. La raíz `/` por ahora redirige al panel; más adelante va a ser el menú
 | Método y ruta                      | Qué hace                                                                 |
 |------------------------------------|--------------------------------------------------------------------------|
 | `GET /`                            | Redirige (303) al panel en `/admin`                                      |
+| `GET /login`                       | Formulario de ingreso (público). Con una sesión válida redirige a `/admin` |
+| `POST /login`                      | Valida mail y contraseña; si están bien deja la cookie de sesión y redirige (303) |
+| `POST /logout`                     | Borra la cookie de sesión y redirige (303) a `/login`                    |
 | `GET /admin`                       | Página completa: lista de productos con el modal de alta cerrado. `?categoria=<valor>` filtra la lista (una categoría desconocida muestra todos); con htmx devuelve solo el panel |
 | `GET /admin/productos/nuevo`       | Abre el modal de alta: con htmx devuelve solo el modal; sin htmx, la página con el modal abierto |
 | `GET /admin/productos/nuevo/cerrar`| Responde vacío; htmx lo pone en `#modal` y el modal se cierra             |
@@ -129,6 +132,55 @@ descripción, categoría, precio simple y precio doble). **Guardar** valida con 
 reglas que el alta; si hay un error se muestra en la misma fila y no se pierde lo escrito.
 Dejar vacío el precio doble o la descripción los borra. **Cancelar** vuelve a la fila original.
 Si el producto ya no existe (por ejemplo, lo borraron desde otra pestaña), la página se recarga.
+
+## Admins
+
+Solo el personal del local va a poder entrar a `/admin`. **No hay registro público**, a
+propósito: si lo hubiera, cualquiera se podría crear una cuenta. Los admins se crean desde la
+terminal y quedan en la tabla `admin`, con la contraseña hasheada con bcrypt (la contraseña en sí
+nunca se guarda ni se muestra).
+
+1. En el `.env`, poné en `ADMIN_EMAILS` los mails que pueden ser admin, separados por coma:
+   ```
+   ADMIN_EMAILS=ana@forestburger.com,luis@forestburger.com
+   ```
+2. Corré:
+   ```bash
+   make crear-admin
+   ```
+   Pide el email y la contraseña dos veces (no se ve al tipear). El email tiene que estar en
+   `ADMIN_EMAILS`, y la contraseña tiene que tener al menos 8 caracteres.
+
+- **Cambiar una contraseña olvidada:** volver a correr `make crear-admin` con el mismo email.
+  No crea otro admin: le cambia la contraseña.
+- **La base:** `make crear-admin` levanta Postgres si no está corriendo, pero **sin borrarlo**, y
+  crea la tabla `admin` si todavía no existe. Si tenés `make run` en otra terminal, usa esa misma
+  base. Ojo: `make run`, `make run-app` y `make test` arrancan con la base vacía, así que después
+  de correrlos hay que volver a crear los admins.
+
+## Login
+
+Todo lo que está bajo `/admin` pide una sesión; `/`, `/login` y `/static/` son públicos.
+
+- **Ingresar:** `/login` pide mail y contraseña. El mail tiene que estar en `ADMIN_EMAILS` y
+  haberse creado con `make crear-admin`. Si algo no coincide, el error es siempre el mismo ("Mail o
+  contraseña incorrectos."), para no revelar qué mails son de admins. Si se entró desde un link a
+  una página del panel, después del login vuelve ahí; a cualquier otro destino no redirige.
+- **La sesión** es una cookie `fb_sesion` firmada con HMAC-SHA256, sin tabla de sesiones: dice el
+  mail y hasta cuándo vale (7 días), y la firma prueba que la armó el servidor. Es `HttpOnly` (el
+  JavaScript de la página no la lee) y `SameSite=Lax`.
+- **El middleware** `RequiereAdmin` envuelve todo `/admin`. Sin sesión válida, redirige al login
+  (con htmx, manda `HX-Redirect: /login`). Además vuelve a mirar `ADMIN_EMAILS` en cada pedido:
+  sacar un mail de la lista le corta el acceso aunque su cookie no haya vencido.
+- **Salir:** el botón "Salir" de la barra lateral borra la cookie.
+
+Variables del `.env` (el Makefile se las pasa a la app):
+
+| Variable         | Para qué |
+|------------------|----------|
+| `SESSION_SECRET` | Clave para firmar las cookies. **Obligatoria**, de al menos 32 caracteres; sin ella la app no arranca. Generala con `openssl rand -hex 32`. **Cambiarla cierra la sesión de todos.** |
+| `COOKIE_SECURE`  | `true` en producción (HTTPS), así la cookie solo viaja cifrada. En localhost, `false`. |
+| `ADMIN_EMAILS`   | Mails que pueden ser admin, separados por coma (ver "Admins"). |
 
 ## Notas
 

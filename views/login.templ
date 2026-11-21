@@ -1,0 +1,37 @@
+package views
+
+// FormLogin son los datos del login para volver a mostrarlo con el error. Nunca lleva la
+// contraseña: si falló, se vuelve a escribir.
+type FormLogin struct {
+	Email string
+	Error string
+	Next  string
+}
+
+// LoginPage es la entrada al panel: una tarjeta centrada, sin barra lateral. Es un form común
+// (sin htmx), así funciona también sin JavaScript.
+templ LoginPage(f FormLogin) {
+	@Documento("Ingresar") {
+		<main class="login-fondo">
+			<section class="login-tarjeta">
+				<img class="login-logo" src="/static/img/logoForestburger.svg" alt="ForestBurger"/>
+				<h1 class="login-titulo">PANEL DEL LOCAL</h1>
+				if f.Error != "" {
+					<p class="error" role="alert">{ f.Error }</p>
+				}
+				<form class="login-form" method="post" action="/login">
+					<input type="hidden" name="next" value={ f.Next }/>
+					<div class="campo">
+						<label for="email">Mail</label>
+						<input id="email" name="email" type="email" value={ f.Email } autocomplete="username" required autofocus/>
+					</div>
+					<div class="campo">
+						<label for="password">Contraseña</label>
+						<input id="password" name="password" type="password" autocomplete="current-password" required/>
+					</div>
+					<button type="submit" class="boton boton-primario boton-ancho">ENTRAR</button>
+				</form>
+			</section>
+		</main>
+	}
+}

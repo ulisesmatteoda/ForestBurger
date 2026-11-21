@@ -10,9 +10,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	_ "github.com/lib/pq" // cambiá por el driver que usa tu main.go
 
+	"forestburger/auth"
 	sqlc "forestburger/db/sqlc"
 )
 
@@ -57,8 +59,31 @@ func TestConversionesPrecio(t *testing.T) {
 
 // ---------- integración (necesitan Postgres) ----------
 
-// setup abre la base de TEST_DATABASE_URL, la deja vacía y arma el mux con las rutas web.
-func setup(t *testing.T) (*http.ServeMux, *sqlc.Queries) {
+// Config de sesión de los tests: no dependen del .env.
+const (
+	secretoTest = "secreto-de-los-tests-de-handlers-0123456789"
+	adminTest   = "admin@forestburger.com"
+)
+
+// setup es como setupSinSesion, pero cada pedido viaja con la cookie de un admin válido: así los
+// tests del panel prueban el panel y no el login.
+func setup(t *testing.T) (http.Handler, *sqlc.Queries) {
+	t.Helper()
+	mux, q := setupSinSesion(t)
+	return conSesion(mux, adminTest), q
+}
+
+// conSesion agrega a cada pedido la cookie de sesión de ese email.
+func conSesion(h http.Handler, email string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.AddCookie(auth.CrearCookie(email, time.Now()))
+		h.ServeHTTP(w, r)
+	})
+}
+
+// setupSinSesion abre la base, la deja vacía, configura la sesión y arma el mux con las mismas
+// rutas que main.go (login público y /admin protegido). Los pedidos van sin cookie.
+func setupSinSesion(t *testing.T) (*http.ServeMux, *sqlc.Queries) {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -73,14 +98,21 @@ func setup(t *testing.T) (*http.ServeMux, *sqlc.Queries) {
 		t.Fatalf("no se pudo conectar a la base: %v", err)
 	}
 	// Ajustá el nombre de la tabla si es distinto.
-	if _, err := conn.Exec(`TRUNCATE producto RESTART IDENTITY CASCADE`); err != nil {
-		t.Fatalf("no se pudo limpiar la tabla: %v", err)
+	if _, err := conn.Exec(`TRUNCATE producto, admin RESTART IDENTITY CASCADE`); err != nil {
+		t.Fatalf("no se pudieron limpiar las tablas: %v", err)
+	}
+
+	t.Setenv("SESSION_SECRET", secretoTest)
+	t.Setenv("COOKIE_SECURE", "")
+	t.Setenv("ADMIN_EMAILS", adminTest)
+	if err := auth.CargarConfig(); err != nil {
+		t.Fatal(err)
 	}
 
 	q := sqlc.New(conn)
 	api := NewAPI(q)
 	mux := http.NewServeMux()
-	api.RutasAdmin(mux)
+	api.Rutas(mux)
 	return mux, q
 }
 
@@ -121,7 +153,7 @@ func TestIndex_MuestraFormularioYProductos(t *testing.T) {
 		}
 	}
 	// El alta ya no está fija debajo de la tabla: vive en el modal, que arranca cerrado.
-	if strings.Contains(body, "<form") || strings.Contains(body, `role="dialog"`) {
+	if strings.Contains(body, `hx-post="/admin/productos"`) || strings.Contains(body, `role="dialog"`) {
 		t.Error("la página no debería traer el formulario de alta con el modal cerrado")
 	}
 }

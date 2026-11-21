@@ -51,7 +51,7 @@ templ ProductoList(productos []db.Producto, categoria string, nuevoID int32) {
         if len(productos) == 0 && categoria != "" {
             <p class="vacio">No hay productos en esta categoría.</p>
         } else if len(productos) == 0 {
-            <p class="vacio">Todavía no hay productos. Cargá el primero con el formulario de abajo.</p>
+            <p class="vacio">Todavía no hay productos. Cargá el primero con + Nuevo producto.</p>
         } else {
             <table class="tabla">
                 <thead>

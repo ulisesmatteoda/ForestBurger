@@ -1,7 +1,13 @@
 package views
 
-// Layout es la estructura base: barra lateral + contenido.
-templ Layout(titulo string) {
+import "forestburger/auth"
+
+// VersionEstilos va en la URL del CSS (?v=...). main.go la calcula al arrancar desde el contenido
+// de styles.css: si el archivo cambia, cambia la URL y el navegador no puede usar una copia vieja.
+var VersionEstilos string
+
+// Documento es el HTML base (head con htmx, fuentes y estilos) que comparten el panel y el login.
+templ Documento(titulo string) {
 	<!DOCTYPE html>
 	<html lang="es">
 		<head>
@@ -11,25 +17,41 @@ templ Layout(titulo string) {
 			<script src="https://unpkg.com/htmx.org@1.9.10"></script>
 			<link rel="preconnect" href="https://fonts.googleapis.com"/>
 			<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Semi+Condensed:wght@700;800&display=swap" rel="stylesheet"/>
-			<link rel="stylesheet" href="/static/styles.css"/>
+			<link rel="stylesheet" href={ "/static/styles.css?v=" + VersionEstilos }/>
 		</head>
 		<body>
-			<div class="app">
-				<aside class="sidebar">
-					<div class="sidebar-marca">
-						@Logo()
-					</div>
-					<span class="sidebar-etiqueta">PANEL DEL LOCAL</span>
-					<nav class="sidebar-nav">
-						<a href="/admin" class="nav-item activo">Productos</a>
-					</nav>
-				</aside>
-				<main class="contenido">
-					{ children... }
-				</main>
-			</div>
+			{ children... }
 		</body>
 	</html>
+}
+
+// Layout es la estructura del panel: barra lateral + contenido. Abajo de la barra va el admin
+// logueado, que el middleware dejó en el contexto, y el botón para salir.
+templ Layout(titulo string) {
+	@Documento(titulo) {
+		<div class="app">
+			<aside class="sidebar">
+				<div class="sidebar-marca">
+					@Logo()
+				</div>
+				<span class="sidebar-etiqueta">PANEL DEL LOCAL</span>
+				<nav class="sidebar-nav">
+					<a href="/admin" class="nav-item activo">Productos</a>
+				</nav>
+				if email := auth.AdminDesdeContexto(ctx); email != "" {
+					<div class="sidebar-sesion">
+						<span class="sidebar-admin">{ email }</span>
+						<form method="post" action="/logout">
+							<button type="submit" class="boton boton-secundario">Salir</button>
+						</form>
+					</div>
+				}
+			</aside>
+			<main class="contenido">
+				{ children... }
+			</main>
+		</div>
+	}
 }
 
 // Logo es el logo completo de la marca (pinos y nombre). Es lo único que nombra la marca en la
