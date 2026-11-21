@@ -17,7 +17,7 @@ func (a *API) Index(w http.ResponseWriter, r *http.Request) {
 	a.renderIndex(w, r, views.FormProducto{}, http.StatusOK)
 }
 
-// CrearProducto: POST /productos
+// CrearProducto: POST /admin/productos
 // Recibe el formulario (lo manda HTMX), valida y guarda. Responde con dos fragmentos:
 // la lista actualizada y el formulario (vacío si salió bien, con el mensaje si hubo error).
 func (a *API) CrearProducto(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +51,7 @@ func (a *API) CrearProducto(w http.ResponseWriter, r *http.Request) {
 	a.renderFragmentos(w, r, views.FormProducto{})
 }
 
-// FilaProducto: GET /productos/{id}
+// FilaProducto: GET /admin/productos/{id}
 // Devuelve la fila del producto en modo lectura (la usa el botón "Cancelar" de la edición).
 func (a *API) FilaProducto(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.productoDeRuta(w, r)
@@ -62,7 +62,7 @@ func (a *API) FilaProducto(w http.ResponseWriter, r *http.Request) {
 	views.ProductoFila(p).Render(r.Context(), w)
 }
 
-// FormEditarProducto: GET /productos/{id}/editar
+// FormEditarProducto: GET /admin/productos/{id}/editar
 // Devuelve la fila del producto en modo edición, con los datos actuales cargados.
 func (a *API) FormEditarProducto(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.productoDeRuta(w, r)
@@ -72,7 +72,7 @@ func (a *API) FormEditarProducto(w http.ResponseWriter, r *http.Request) {
 	a.renderFilaEditar(w, r, p.ID, formDesdeProducto(p))
 }
 
-// ActualizarProducto: PUT /productos/{id}
+// ActualizarProducto: PUT /admin/productos/{id}
 // Recibe los campos de la fila, valida con las mismas reglas que la creación y actualiza.
 // Si salió bien devuelve la fila en modo lectura; si los datos son inválidos devuelve la fila
 // en modo edición con el mensaje (con 200, porque HTMX no hace el swap de las respuestas 4xx/5xx).
@@ -118,7 +118,7 @@ func (a *API) ActualizarProducto(w http.ResponseWriter, r *http.Request) {
 	views.ProductoFila(p).Render(r.Context(), w)
 }
 
-// BorrarProducto: DELETE /productos/{id}
+// BorrarProducto: DELETE /admin/productos/{id}
 func (a *API) BorrarProducto(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {

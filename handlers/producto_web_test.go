@@ -80,17 +80,12 @@ func setup(t *testing.T) (*http.ServeMux, *sqlc.Queries) {
 	q := sqlc.New(conn)
 	api := NewAPI(q)
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", api.Index)
-	mux.HandleFunc("POST /productos", api.CrearProducto)
-	mux.HandleFunc("GET /productos/{id}", api.FilaProducto)
-	mux.HandleFunc("GET /productos/{id}/editar", api.FormEditarProducto)
-	mux.HandleFunc("PUT /productos/{id}", api.ActualizarProducto)
-	mux.HandleFunc("DELETE /productos/{id}", api.BorrarProducto)
+	api.RutasAdmin(mux)
 	return mux, q
 }
 
 func postForm(mux http.Handler, datos url.Values) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPost, "/productos", strings.NewReader(datos.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/admin/productos", strings.NewReader(datos.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -107,7 +102,7 @@ func TestIndex_MuestraFormularioYProductos(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, quiero 200", rec.Code)
@@ -116,7 +111,7 @@ func TestIndex_MuestraFormularioYProductos(t *testing.T) {
 		t.Errorf("Content-Type = %q, quiero text/html", ct)
 	}
 	body := rec.Body.String()
-	for _, esperado := range []string{"<form", `hx-post="/productos"`, `hx-target="#lista-productos"`, `id="lista-productos"`, `id="product-form-container"`, "Forest Clásica"} {
+	for _, esperado := range []string{"<form", `hx-post="/admin/productos"`, `hx-target="#lista-productos"`, `id="lista-productos"`, `id="product-form-container"`, "Forest Clásica"} {
 		if !strings.Contains(body, esperado) {
 			t.Errorf("el HTML no contiene %q", esperado)
 		}
@@ -212,7 +207,7 @@ func TestBorrarProducto(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodDelete, "/productos/"+strconv.Itoa(int(p.ID)), nil)
+	req := httptest.NewRequest(http.MethodDelete, "/admin/productos/"+strconv.Itoa(int(p.ID)), nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -232,7 +227,7 @@ func TestBorrarProducto(t *testing.T) {
 func TestBorrarProducto_IDInvalido(t *testing.T) {
 	mux, _ := setup(t)
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/productos/abc", nil))
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/admin/productos/abc", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, quiero 400", rec.Code)
 	}
@@ -273,7 +268,7 @@ func TestFormEditarProducto_MuestraFilaConDatos(t *testing.T) {
 	mux, q := setup(t)
 	_, id := crearParaEditar(t, q)
 
-	rec := pedir(mux, http.MethodGet, "/productos/"+id+"/editar", nil)
+	rec := pedir(mux, http.MethodGet, "/admin/productos/"+id+"/editar", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, quiero 200", rec.Code)
@@ -283,7 +278,7 @@ func TestFormEditarProducto_MuestraFilaConDatos(t *testing.T) {
 		t.Error("la respuesta debe ser solo la fila, no la página completa")
 	}
 	for _, esperado := range []string{
-		`hx-put="/productos/` + id + `"`,
+		`hx-put="/admin/productos/` + id + `"`,
 		`value="Forest Clasica"`,
 		`value="9500.00"`,
 		`value="12000.00"`,
@@ -299,13 +294,13 @@ func TestFilaProducto_VuelveAModoLectura(t *testing.T) {
 	mux, q := setup(t)
 	_, id := crearParaEditar(t, q)
 
-	rec := pedir(mux, http.MethodGet, "/productos/"+id, nil)
+	rec := pedir(mux, http.MethodGet, "/admin/productos/"+id, nil)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, quiero 200", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, esperado := range []string{"Forest Clasica", `hx-get="/productos/` + id + `/editar"`} {
+	for _, esperado := range []string{"Forest Clasica", `hx-get="/admin/productos/` + id + `/editar"`} {
 		if !strings.Contains(body, esperado) {
 			t.Errorf("la fila no contiene %q", esperado)
 		}
@@ -324,12 +319,12 @@ func TestEditarProducto_NoExisteOIDInvalido(t *testing.T) {
 		datos  url.Values
 		status int
 	}{
-		{"editar inexistente", http.MethodGet, "/productos/9999/editar", nil, http.StatusNotFound},
-		{"fila inexistente", http.MethodGet, "/productos/9999", nil, http.StatusNotFound},
-		{"editar id inválido", http.MethodGet, "/productos/abc/editar", nil, http.StatusBadRequest},
-		{"actualizar inexistente", http.MethodPut, "/productos/9999",
+		{"editar inexistente", http.MethodGet, "/admin/productos/9999/editar", nil, http.StatusNotFound},
+		{"fila inexistente", http.MethodGet, "/admin/productos/9999", nil, http.StatusNotFound},
+		{"editar id inválido", http.MethodGet, "/admin/productos/abc/editar", nil, http.StatusBadRequest},
+		{"actualizar inexistente", http.MethodPut, "/admin/productos/9999",
 			url.Values{"nombre": {"x"}, "categoria": {"hamburguesa"}, "precio": {"10"}}, http.StatusNotFound},
-		{"actualizar id inválido", http.MethodPut, "/productos/abc",
+		{"actualizar id inválido", http.MethodPut, "/admin/productos/abc",
 			url.Values{"nombre": {"x"}, "categoria": {"hamburguesa"}, "precio": {"10"}}, http.StatusBadRequest},
 	}
 	for _, c := range casos {
@@ -350,7 +345,7 @@ func TestActualizarProducto_GuardaYDevuelveFila(t *testing.T) {
 	mux, q := setup(t)
 	p, id := crearParaEditar(t, q)
 
-	rec := pedir(mux, http.MethodPut, "/productos/"+id, url.Values{
+	rec := pedir(mux, http.MethodPut, "/admin/productos/"+id, url.Values{
 		"nombre":       {"Forest Triple"},
 		"categoria":    {"veggie"},
 		"precio":       {"11500"},
@@ -365,7 +360,7 @@ func TestActualizarProducto_GuardaYDevuelveFila(t *testing.T) {
 	if strings.Contains(body, "<html") {
 		t.Error("la respuesta debe ser solo la fila, no la página completa")
 	}
-	for _, esperado := range []string{"Forest Triple", `hx-get="/productos/` + id + `/editar"`} {
+	for _, esperado := range []string{"Forest Triple", `hx-get="/admin/productos/` + id + `/editar"`} {
 		if !strings.Contains(body, esperado) {
 			t.Errorf("la fila devuelta no contiene %q", esperado)
 		}
@@ -390,7 +385,7 @@ func TestActualizarProducto_PrecioDobleVacioLoBorra(t *testing.T) {
 	mux, q := setup(t)
 	p, id := crearParaEditar(t, q)
 
-	rec := pedir(mux, http.MethodPut, "/productos/"+id, url.Values{
+	rec := pedir(mux, http.MethodPut, "/admin/productos/"+id, url.Values{
 		"nombre":       {"Forest Clasica"},
 		"categoria":    {"hamburguesa"},
 		"precio":       {"9500"},
@@ -443,7 +438,7 @@ func TestActualizarProducto_Errores(t *testing.T) {
 			mux, q := setup(t)
 			p, id := crearParaEditar(t, q)
 
-			rec := pedir(mux, http.MethodPut, "/productos/"+id, c.datos)
+			rec := pedir(mux, http.MethodPut, "/admin/productos/"+id, c.datos)
 
 			// 200 y la fila sigue en modo edición con el mensaje (HTMX no hace swap de los 4xx).
 			if rec.Code != http.StatusOK {
@@ -453,7 +448,7 @@ func TestActualizarProducto_Errores(t *testing.T) {
 			if !strings.Contains(body, c.mensaje) {
 				t.Errorf("la fila no muestra el mensaje %q", c.mensaje)
 			}
-			if !strings.Contains(body, `hx-put="/productos/`+id+`"`) {
+			if !strings.Contains(body, `hx-put="/admin/productos/`+id+`"`) {
 				t.Error("la fila debería seguir en modo edición")
 			}
 			// Lo que se escribió se conserva para no obligar a tipearlo de nuevo.
