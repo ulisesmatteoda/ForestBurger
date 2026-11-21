@@ -2,19 +2,29 @@ package views
 
 import "forestburger/db/sqlc"
 
-// IndexPage es la página principal: lista de productos + formulario.
-templ IndexPage(productos []db.Producto, form FormProducto) {
+// IndexPage es la página del panel: la lista con sus filtros y el lugar del modal de alta.
+// modal es nil con el modal cerrado; con un valor, la página sale con el modal ya abierto y esos
+// datos (entrar directo a /admin/productos/nuevo, F5, o un error del alta sin JS).
+templ IndexPage(productos []db.Producto, categoria string, modal *FormProducto) {
 	@Layout("Productos") {
 		<header class="encabezado">
 			<div>
 				<h1>PRODUCTOS</h1>
 				<p class="subtitulo">Lo que cargues acá aparece en el menú de la web.</p>
 			</div>
-			<a href="#nuevo" class="boton boton-primario">+ NUEVO PRODUCTO</a>
+			<a
+				href="/admin/productos/nuevo"
+				class="boton boton-primario"
+				hx-get="/admin/productos/nuevo"
+				hx-target="#modal"
+				hx-swap="innerHTML"
+			>+ NUEVO PRODUCTO</a>
 		</header>
-		@ProductoList(productos)
-		<div id="product-form-container">
-			@ProductoForm(form)
+		@ProductosPanel(productos, categoria, 0)
+		<div id="modal">
+			if modal != nil {
+				@ModalNuevoProducto(*modal)
+			}
 		</div>
 	}
 }

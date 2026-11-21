@@ -31,8 +31,7 @@ body {
   border-right: 1px solid var(--fb-divisor);
 }
 .sidebar-marca { display: flex; align-items: center; gap: 10px; padding-bottom: 8px; }
-.logo { width: 40px; color: var(--fb-texto); }
-.marca { font-weight: 700; font-size: 16px; letter-spacing: 4px; }
+.logo { display: block; width: 100%; height: auto; }
 .sidebar-etiqueta { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: var(--fb-texto-secundario); margin-bottom: 8px; }
 .sidebar-nav { display: flex; flex-direction: column; gap: 8px; }
 .nav-item {
@@ -89,6 +88,11 @@ h2 {
 }
 .chip.activo, .chip:has(input:checked) { background: var(--fb-crema); border-color: var(--fb-crema); color: var(--fb-verde); }
 .chip input { position: absolute; opacity: 0; pointer-events: none; }
+a.chip { text-decoration: none; }
+
+/* ---------- Barra de filtros de la lista ---------- */
+.barra { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.conteo { font-size: 14px; color: var(--fb-texto-secundario); }
 
 .tag {
   display: inline-block; padding: 4px 10px; border-radius: 999px;
@@ -112,7 +116,6 @@ h2 {
 .vacio { padding: 32px 16px; text-align: center; color: var(--fb-texto-secundario); }
 
 /* ---------- Formulario ---------- */
-.form { display: flex; flex-direction: column; gap: 20px; max-width: 640px; }
 .campo { display: flex; flex-direction: column; gap: 6px; }
 .campo label, .campo-label { font-size: 14px; font-weight: 600; }
 .campo input, .campo textarea {
@@ -121,7 +124,6 @@ h2 {
   color: var(--fb-texto); font-family: inherit; font-size: 16px;
 }
 .campo input:focus, .campo textarea:focus { outline: 2px solid var(--fb-crema); outline-offset: 1px; }
-.form-acciones { display: flex; gap: 12px; padding-top: 8px; }
 .error { padding: 12px 14px; border: 1px solid var(--fb-peligro); border-radius: var(--fb-radius-md); color: var(--fb-peligro); }
 
 /* ---------- Celular: la barra lateral pasa arriba ---------- */
@@ -134,12 +136,55 @@ h2 {
 }
 
 fieldset.campo { border: 0; padding: 0; margin: 0; }
-.form-seccion { display: flex; flex-direction: column; gap: 16px; scroll-margin-top: 24px; }
 
 .campos-fila { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .ayuda { margin: -12px 0 0; font-size: 12px; color: var(--fb-texto-secundario); }
-@media (max-width: 600px) { .campos-fila { grid-template-columns: 1fr; } }
 legend.campo-label { padding: 0; margin-bottom: 6px; }
+
+/* ---------- Modal de alta ---------- */
+.modal-fondo {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 72px 24px 40px; overflow-y: auto;
+  background: rgba(1, 22, 13, 0.72); backdrop-filter: blur(3px);
+}
+.modal {
+  width: 100%; max-width: 680px;
+  display: flex; flex-direction: column;
+  background: var(--fb-verde); border: 1px solid var(--fb-divisor); border-radius: 18px;
+  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.5);
+}
+.modal-cabecera {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+  padding: 28px 32px 22px; border-bottom: 1px solid var(--fb-divisor);
+}
+.modal-titulo {
+  margin: 0; font-family: 'Barlow Semi Condensed', sans-serif; font-weight: 800;
+  font-size: 32px; line-height: 1; color: var(--fb-crema);
+}
+.modal-sub { margin: 6px 0 0; font-size: 14px; color: var(--fb-texto-secundario); }
+.cerrar {
+  width: 44px; height: 44px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid var(--fb-borde); border-radius: 12px;
+  color: var(--fb-crema); cursor: pointer;
+}
+.modal-cuerpo { display: flex; flex-direction: column; gap: 22px; padding: 26px 32px 28px; }
+.modal-pie {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 20px 32px 28px; border-top: 1px solid var(--fb-divisor);
+}
+.modal-acciones { display: flex; gap: 12px; flex-wrap: wrap; }
+.boton-texto { background: transparent; border-color: transparent; color: var(--fb-texto-secundario); padding: 0 8px; }
+tr.nuevo td { background: rgba(232, 230, 225, 0.12); }
+/* La lista de atrás no se scrollea mientras el modal está abierto. */
+body:has(.modal-fondo) { overflow: hidden; }
+
+@media (max-width: 600px) {
+  .campos-fila { grid-template-columns: 1fr; }
+  .modal-fondo { padding: 16px; }
+  .modal-cabecera, .modal-cuerpo, .modal-pie { padding-left: 20px; padding-right: 20px; }
+}
 /* ---------- Edición en la fila de la tabla ---------- */
 .btn-fila {
   height: 36px; padding: 0 14px;

@@ -18,54 +18,100 @@ var categorias = []struct{ Valor, Label string }{
 	{"bebida", "Bebida"},
 }
 
-// ProductoForm renderiza el formulario de nuevo producto. Hace POST /productos (estilo clásico).
-templ ProductoForm(f FormProducto) {
-	<section id="nuevo" class="form-seccion">
-		<h2>NUEVO PRODUCTO</h2>
-		<form id="product-form" class="form" hx-post="/productos" hx-target="#lista-productos" hx-swap="outerHTML">
-			if f.Error != "" {
-				<p class="error" role="alert">{ f.Error }</p>
-			}
-			<div class="campo">
-				<label for="nombre">Nombre</label>
-				<input id="nombre" name="nombre" type="text" value={ f.Nombre } required/>
+// ModalNuevoProducto es el alta de productos, encima de la lista. Se cierra pidiendo al servidor
+// un #modal vacío: con la ✕, con Cancelar, con Esc o con un clic en el fondo (solo en el fondo, no
+// adentro del cuadro: por eso el target:.modal-fondo). Si hay error, el servidor devuelve este mismo
+// modal con f.Error y lo que se escribió. method/action son el respaldo para cuando no hay JS.
+templ ModalNuevoProducto(f FormProducto) {
+	<div
+		class="modal-fondo"
+		hx-get="/admin/productos/nuevo/cerrar"
+		hx-target="#modal"
+		hx-swap="innerHTML"
+		hx-trigger="click target:.modal-fondo, keyup[key=='Escape'] from:body"
+	>
+		<div class="modal" role="dialog" aria-modal="true" aria-labelledby="titulo-modal">
+			<div class="modal-cabecera">
+				<div>
+					<h2 class="modal-titulo" id="titulo-modal">NUEVO PRODUCTO</h2>
+					<p class="modal-sub">Aparece en el menú apenas lo guardes.</p>
+				</div>
+				<button
+					type="button"
+					class="cerrar"
+					aria-label="Cerrar"
+					hx-get="/admin/productos/nuevo/cerrar"
+					hx-target="#modal"
+				>
+					@IconoCerrar()
+				</button>
 			</div>
-			<fieldset class="campo">
-				<legend class="campo-label">Categoría</legend>
-				<div class="chips">
-					for i, c := range categorias {
-						<label class="chip">
-							<input type="radio" name="categoria" value={ c.Valor } checked?={ f.Categoria == c.Valor || (f.Categoria == "" && i == 0) }/>
-							{ c.Label }
-						</label>
+			<form
+				method="post"
+				action="/admin/productos"
+				hx-post="/admin/productos"
+				hx-target="#panel-productos"
+				hx-swap="outerHTML"
+			>
+				<div class="modal-cuerpo">
+					if f.Error != "" {
+						<p class="error" role="alert">{ f.Error }</p>
 					}
+					@camposProducto(f)
 				</div>
-			</fieldset>
-			<div class="campos-fila">
-				<div class="campo">
-					<label for="precio">Precio simple</label>
-					<input id="precio" name="precio" type="number" min="0" step="0.01" value={ f.Precio } required/>
+				<div class="modal-pie">
+					<button type="reset" class="boton boton-texto">LIMPIAR</button>
+					<div class="modal-acciones">
+						<button
+							type="button"
+							class="boton boton-secundario"
+							hx-get="/admin/productos/nuevo/cerrar"
+							hx-target="#modal"
+						>CANCELAR</button>
+						<button type="submit" class="boton boton-primario">GUARDAR PRODUCTO</button>
+					</div>
 				</div>
-				<div class="campo">
-					<label for="precio_doble">Precio doble (opcional)</label>
-					<input id="precio_doble" name="precio_doble" type="number" min="0" step="0.01" value={ f.PrecioDoble }/>
-				</div>
-			</div>
-			<p class="ayuda">Dejá el precio doble vacío si el producto no tiene versión doble (bebidas, acompañamientos).</p>
-			<div class="campo">
-				<label for="descripcion">Descripción</label>
-				<textarea id="descripcion" name="descripcion" rows="3">{ f.Descripcion }</textarea>
-			</div>
-			<div class="form-acciones">
-				<button type="submit" class="boton boton-primario">GUARDAR PRODUCTO</button>
-				<button type="reset" class="boton boton-secundario">LIMPIAR</button>
-			</div>
-		</form>
-	</section>
+			</form>
+		</div>
+	</div>
 }
 
-templ ProductoFormOOB(f FormProducto) {
-    <div id="product-form-container" hx-swap-oob="true">
-        @ProductoForm(f)
-    </div>
+// ModalCerradoOOB vacía el modal desde una respuesta que apunta a otro lado (el alta exitosa
+// reemplaza el panel de productos y, de paso, cierra el modal).
+templ ModalCerradoOOB() {
+	<div id="modal" hx-swap-oob="innerHTML"></div>
+}
+
+// camposProducto son los campos del alta: nombre, categoría, los dos precios y la descripción.
+templ camposProducto(f FormProducto) {
+	<div class="campo">
+		<label for="nombre">Nombre</label>
+		<input id="nombre" name="nombre" type="text" value={ f.Nombre } required autofocus/>
+	</div>
+	<fieldset class="campo">
+		<legend class="campo-label">Categoría</legend>
+		<div class="chips">
+			for i, c := range categorias {
+				<label class="chip">
+					<input type="radio" name="categoria" value={ c.Valor } checked?={ f.Categoria == c.Valor || (f.Categoria == "" && i == 0) }/>
+					{ c.Label }
+				</label>
+			}
+		</div>
+	</fieldset>
+	<div class="campos-fila">
+		<div class="campo">
+			<label for="precio">Precio simple</label>
+			<input id="precio" name="precio" type="number" min="0" step="0.01" value={ f.Precio } required/>
+		</div>
+		<div class="campo">
+			<label for="precio_doble">Precio doble (opcional)</label>
+			<input id="precio_doble" name="precio_doble" type="number" min="0" step="0.01" value={ f.PrecioDoble }/>
+		</div>
+	</div>
+	<p class="ayuda">Dejá el precio doble vacío si el producto no tiene versión doble (bebidas, acompañamientos).</p>
+	<div class="campo">
+		<label for="descripcion">Descripción</label>
+		<textarea id="descripcion" name="descripcion" rows="3">{ f.Descripcion }</textarea>
+	</div>
 }

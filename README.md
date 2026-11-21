@@ -84,14 +84,43 @@ propios, sobre la capa de persistencia generada con **sqlc** y PostgreSQL.
 La interfaz se actualiza con HTMX: el servidor responde fragmentos de HTML (no JSON)
 y HTMX los coloca en la página sin recargarla.
 
-| Método y ruta                | Qué hace                                                                 |
-|------------------------------|--------------------------------------------------------------------------|
-| `GET /`                      | Página completa: lista de productos y formulario de alta                 |
-| `POST /productos`            | Crea un producto; devuelve la lista actualizada y el formulario vacío (OOB) |
-| `GET /productos/{id}/editar` | Devuelve la fila del producto en modo edición, con sus datos cargados    |
-| `PUT /productos/{id}`        | Actualiza el producto; devuelve la fila en modo lectura (o en edición con el error) |
-| `GET /productos/{id}`        | Devuelve la fila en modo lectura (botón "Cancelar" de la edición)        |
-| `DELETE /productos/{id}`     | Borra el producto; responde 200 vacío y HTMX quita la fila              |
+El panel del local vive bajo `/admin`, así más adelante se puede proteger todo junto con un
+login. La raíz `/` por ahora redirige al panel; más adelante va a ser el menú para los clientes.
+
+| Método y ruta                      | Qué hace                                                                 |
+|------------------------------------|--------------------------------------------------------------------------|
+| `GET /`                            | Redirige (303) al panel en `/admin`                                      |
+| `GET /admin`                       | Página completa: lista de productos con el modal de alta cerrado. `?categoria=<valor>` filtra la lista (una categoría desconocida muestra todos); con htmx devuelve solo el panel |
+| `GET /admin/productos/nuevo`       | Abre el modal de alta: con htmx devuelve solo el modal; sin htmx, la página con el modal abierto |
+| `GET /admin/productos/nuevo/cerrar`| Responde vacío; htmx lo pone en `#modal` y el modal se cierra             |
+| `POST /admin/productos`            | Crea un producto; devuelve el panel con todos los productos (el nuevo resaltado) y cierra el modal (OOB). Con error, vuelve al modal con el mensaje |
+| `GET /admin/productos/{id}/editar` | Devuelve la fila del producto en modo edición, con sus datos cargados    |
+| `PUT /admin/productos/{id}`        | Actualiza el producto; devuelve la fila en modo lectura (o en edición con el error) |
+| `GET /admin/productos/{id}`        | Devuelve la fila en modo lectura (botón "Cancelar" de la edición)        |
+| `DELETE /admin/productos/{id}`     | Borra el producto; responde 200 vacío y HTMX quita la fila              |
+
+### Alta de productos (modal)
+
+**+ NUEVO PRODUCTO** pide el modal y lo pone en `<div id="modal">`, al final de la página: el
+modal se ve cuando ese div tiene algo adentro. Se cierra pidiendo `/admin/productos/nuevo/cerrar`,
+que responde vacío, con la ✕, con **Cancelar**, con Esc o con un clic en el fondo. Todo con
+atributos de htmx, sin JavaScript propio.
+
+- **Guardar bien:** el servidor devuelve el panel con todos los productos (sin filtro, y la URL
+  vuelve a `/admin` con `HX-Push-Url`), la fila nueva resaltada, y un `<div id="modal">` vacío
+  por OOB que cierra el modal.
+- **Guardar con error:** responde 200 con `HX-Retarget: #modal` y `HX-Reswap: innerHTML`. Así
+  htmx pone el modal con el mensaje y lo que se escribió en vez de tocar la tabla.
+- **Sin JavaScript:** el link y el formulario funcionan solos. Entrar a `/admin/productos/nuevo`
+  muestra la página con el modal abierto; guardar redirige a `/admin` (303), o muestra la
+  página con el modal y el error (400).
+
+### Filtrar por categoría
+
+Arriba de la lista hay chips (Todos, Hamburguesa, Veggie, Acompañamiento, Bebida) y un contador.
+Cada chip es un link a `/admin?categoria=<valor>`: con htmx pide solo el panel y actualiza la URL
+(`hx-push-url`), así el filtro sobrevive a F5 y se puede compartir; sin JS funciona como un link
+común y devuelve la página completa.
 
 ### Editar un producto
 

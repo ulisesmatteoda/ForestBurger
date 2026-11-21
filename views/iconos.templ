@@ -1,0 +1,22 @@
+package views
+
+// Íconos de trazo, inline y no como <img>: así toman el color del botón (currentColor). Son
+// decorativos (aria-hidden): el nombre accesible lo pone el aria-label del botón.
+
+templ IconoEditar() {
+	<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"></path>
+	</svg>
+}
+
+templ IconoBorrar() {
+	<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"></path>
+	</svg>
+}
+
+templ IconoCerrar() {
+	<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="M6 6l12 12M18 6L6 18"></path>
+	</svg>
+}

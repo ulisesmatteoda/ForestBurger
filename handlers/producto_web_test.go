@@ -84,9 +84,13 @@ func setup(t *testing.T) (*http.ServeMux, *sqlc.Queries) {
 	return mux, q
 }
 
-func postForm(mux http.Handler, datos url.Values) *httptest.ResponseRecorder {
+// postForm manda el alta de productos; con htmx=true, como la manda el modal (header HX-Request).
+func postForm(mux http.Handler, datos url.Values, htmx bool) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/admin/productos", strings.NewReader(datos.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if htmx {
+		req.Header.Set("HX-Request", "true")
+	}
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	return rec
@@ -111,10 +115,14 @@ func TestIndex_MuestraFormularioYProductos(t *testing.T) {
 		t.Errorf("Content-Type = %q, quiero text/html", ct)
 	}
 	body := rec.Body.String()
-	for _, esperado := range []string{"<form", `hx-post="/admin/productos"`, `hx-target="#lista-productos"`, `id="lista-productos"`, `id="product-form-container"`, "Forest Clásica", `aria-label="Editar Forest Clásica"`, `aria-label="Borrar Forest Clásica"`} {
+	for _, esperado := range []string{`hx-get="/admin/productos/nuevo"`, `<div id="modal"></div>`, `id="lista-productos"`, "Forest Clásica", `aria-label="Editar Forest Clásica"`, `aria-label="Borrar Forest Clásica"`} {
 		if !strings.Contains(body, esperado) {
 			t.Errorf("el HTML no contiene %q", esperado)
 		}
+	}
+	// El alta ya no está fija debajo de la tabla: vive en el modal, que arranca cerrado.
+	if strings.Contains(body, "<form") || strings.Contains(body, `role="dialog"`) {
+		t.Error("la página no debería traer el formulario de alta con el modal cerrado")
 	}
 }
 
@@ -253,30 +261,29 @@ func TestIndex_CategoriaSinProductosAvisa(t *testing.T) {
 	}
 }
 
-func TestCrearProducto_DevuelveFragmentosYGuarda(t *testing.T) {
+func TestCrearProducto_DevuelvePanelYCierraElModal(t *testing.T) {
 	mux, q := setup(t)
 
 	rec := postForm(mux, url.Values{
 		"nombre":       {"Doble Bacon"},
-		"categoria":    {"burger"},
+		"categoria":    {"hamburguesa"},
 		"precio":       {"12000"},
 		"precio_doble": {"15000"},
 		"descripcion":  {"con panceta"},
-	})
+	}, true)
 
-	// Sin redirect: 200 y HTML parcial.
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, quiero 200", rec.Code)
 	}
-	if loc := rec.Header().Get("Location"); loc != "" {
-		t.Errorf("no debería haber redirect, Location = %q", loc)
+	if got := rec.Header().Get("HX-Push-Url"); got != "/admin" {
+		t.Errorf("HX-Push-Url = %q, quiero /admin", got)
 	}
 	body := rec.Body.String()
 	if strings.Contains(body, "<html") {
 		t.Error("la respuesta debe ser un fragmento, no la página completa")
 	}
-	// Fragmento 1: lista actualizada. Fragmento 2: formulario vacío por OOB.
-	for _, esperado := range []string{`id="lista-productos"`, "Doble Bacon", `id="product-form-container" hx-swap-oob="true"`} {
+	// Fragmento 1: el panel sin filtro con la fila nueva resaltada. Fragmento 2: el modal vacío (OOB).
+	for _, esperado := range []string{`id="panel-productos"`, "Doble Bacon", `class="nuevo"`, `<div id="modal" hx-swap-oob="innerHTML"></div>`} {
 		if !strings.Contains(body, esperado) {
 			t.Errorf("la respuesta no contiene %q", esperado)
 		}
@@ -291,6 +298,41 @@ func TestCrearProducto_DevuelveFragmentosYGuarda(t *testing.T) {
 	}
 	if ps[0].Nombre != "Doble Bacon" || !ps[0].PrecioDoble.Valid {
 		t.Errorf("producto guardado incorrecto: %+v", ps[0])
+	}
+}
+
+func TestCrearProducto_SinHTMXRedirigeAlPanel(t *testing.T) {
+	mux, q := setup(t)
+
+	rec := postForm(mux, url.Values{"nombre": {"Papas"}, "categoria": {"acompañamiento"}, "precio": {"4000"}}, false)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, quiero 303", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/admin" {
+		t.Errorf("Location = %q, quiero /admin", loc)
+	}
+	if ps, _ := q.ListProductos(context.Background()); len(ps) != 1 {
+		t.Errorf("hay %d productos, quiero 1", len(ps))
+	}
+}
+
+func TestCrearProducto_SinHTMXConErrorMuestraLaPagina(t *testing.T) {
+	mux, q := setup(t)
+
+	rec := postForm(mux, url.Values{"nombre": {"  "}, "categoria": {"bebida"}, "precio": {"10"}}, false)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, quiero 400", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, esperado := range []string{"<html", `role="dialog"`, "el nombre es obligatorio"} {
+		if !strings.Contains(body, esperado) {
+			t.Errorf("la página no contiene %q", esperado)
+		}
+	}
+	if ps, _ := q.ListProductos(context.Background()); len(ps) != 0 {
+		t.Errorf("no debería haberse guardado nada, hay %d productos", len(ps))
 	}
 }
 
@@ -317,19 +359,81 @@ func TestCrearProducto_Errores(t *testing.T) {
 	for _, c := range casos {
 		t.Run(c.nombre, func(t *testing.T) {
 			mux, q := setup(t)
-			rec := postForm(mux, c.datos)
+			rec := postForm(mux, c.datos, true)
 
 			if rec.Code != c.status {
 				t.Errorf("status = %d, quiero %d", rec.Code, c.status)
 			}
-			if !strings.Contains(rec.Body.String(), c.mensaje) {
-				t.Errorf("la página no muestra el mensaje %q", c.mensaje)
+			// El error vuelve al modal y la tabla no se toca.
+			if got := rec.Header().Get("HX-Retarget"); got != "#modal" {
+				t.Errorf("HX-Retarget = %q, quiero #modal", got)
+			}
+			if got := rec.Header().Get("HX-Reswap"); got != "innerHTML" {
+				t.Errorf("HX-Reswap = %q, quiero innerHTML", got)
+			}
+			body := rec.Body.String()
+			if !strings.Contains(body, c.mensaje) {
+				t.Errorf("el modal no muestra el mensaje %q", c.mensaje)
+			}
+			if !strings.Contains(body, `role="dialog"`) {
+				t.Error("la respuesta debería ser el modal")
+			}
+			if strings.Contains(body, `id="panel-productos"`) {
+				t.Error("con error no debería devolver el panel")
 			}
 			ps, _ := q.ListProductos(context.Background())
 			if len(ps) != 0 {
 				t.Errorf("no debería haberse guardado nada, hay %d productos", len(ps))
 			}
 		})
+	}
+}
+
+// ---------- modal de alta ----------
+
+func TestNuevoProducto_ConHTMXDevuelveSoloElModal(t *testing.T) {
+	mux, _ := setup(t)
+
+	rec := pedirPanel(mux, "/admin/productos/nuevo", true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, quiero 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "<html") {
+		t.Error("con HX-Request tiene que devolver solo el modal")
+	}
+	for _, esperado := range []string{`role="dialog"`, `hx-post="/admin/productos"`, `hx-target="#panel-productos"`, "NUEVO PRODUCTO"} {
+		if !strings.Contains(body, esperado) {
+			t.Errorf("el modal no contiene %q", esperado)
+		}
+	}
+}
+
+func TestNuevoProducto_SinHTMXDevuelvePaginaConModal(t *testing.T) {
+	mux, q := setup(t)
+	cargarHamburguesaYBebida(t, q)
+
+	rec := pedirPanel(mux, "/admin/productos/nuevo", false)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, quiero 200", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, esperado := range []string{"<html", `id="panel-productos"`, "Forest Clásica", `<div id="modal"><div class="modal-fondo"`, `role="dialog"`} {
+		if !strings.Contains(body, esperado) {
+			t.Errorf("la página no contiene %q", esperado)
+		}
+	}
+}
+
+func TestCerrarModal_DevuelveVacio(t *testing.T) {
+	mux, _ := setup(t)
+
+	rec := pedirPanel(mux, "/admin/productos/nuevo/cerrar", true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, quiero 200", rec.Code)
+	}
+	if rec.Body.Len() != 0 {
+		t.Errorf("el cuerpo debería estar vacío, vino %q", rec.Body.String())
 	}
 }
 

@@ -17,3 +17,5 @@ RETURNING *;
 
 -- name: DeleteProducto :exec
 DELETE FROM producto WHERE id = $1;
+-- name: ListProductosPorCategoria :many
+SELECT * FROM producto WHERE categoria = $1 ORDER BY nombre;

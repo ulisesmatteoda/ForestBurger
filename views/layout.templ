@@ -17,12 +17,11 @@ templ Layout(titulo string) {
 			<div class="app">
 				<aside class="sidebar">
 					<div class="sidebar-marca">
-						//@Logo()
-						<span class="marca">FORESTBURGER</span>
+						@Logo()
 					</div>
 					<span class="sidebar-etiqueta">PANEL DEL LOCAL</span>
 					<nav class="sidebar-nav">
-						<a href="/" class="nav-item activo">Productos</a>
+						<a href="/admin" class="nav-item activo">Productos</a>
 					</nav>
 				</aside>
 				<main class="contenido">
@@ -33,7 +32,8 @@ templ Layout(titulo string) {
 	</html>
 }
 
-// Logo son los pinos de la marca. Toma el color del texto (currentColor).
-/*templ Logo() {
-	<img class="logo" src="/static/img/logo.svg" alt="ForestBurger"/>
-}*/
+// Logo es el logo completo de la marca (pinos y nombre). Es lo único que nombra la marca en la
+// barra, por eso lleva alt. Ya viene en blanco: un <img> no hereda el color del texto.
+templ Logo() {
+	<img class="logo" src="/static/img/logoForestburger.svg" alt="ForestBurger"/>
+}

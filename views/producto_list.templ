@@ -3,16 +3,54 @@ package views
 import (
 	"fmt"
 	"math"
+	"net/url"
 	"strconv"
 	"strings"
 
 	"forestburger/db/sqlc"
 )
 
-// ProductoList renderiza la tabla con todos los productos.
-templ ProductoList(productos []db.Producto) {
+// ProductosPanel es la lista con su barra de filtros y el contador. Es lo que reemplaza htmx
+// al tocar un chip, así los chips, el contador y la tabla cambian juntos.
+templ ProductosPanel(productos []db.Producto, categoria string, nuevoID int32) {
+    <section id="panel-productos">
+        <div class="barra">
+            <nav class="chips" aria-label="Filtrar por categoría">
+                @chipFiltro("Todos", "/admin", categoria == "")
+                for _, c := range categorias {
+                    @chipFiltro(c.Label, "/admin?categoria="+url.QueryEscape(c.Valor), categoria == c.Valor)
+                }
+            </nav>
+            <span class="conteo">{ conteoProductos(len(productos)) }</span>
+        </div>
+        @ProductoList(productos, categoria, nuevoID)
+    </section>
+}
+
+// chipFiltro es un link común (anda sin JS y con F5); con htmx pide solo el panel y deja la URL
+// del filtro en la barra del navegador.
+templ chipFiltro(label, ruta string, activo bool) {
+    <a
+        class={ "chip", templ.KV("activo", activo) }
+        href={ templ.URL(ruta) }
+        hx-get={ ruta }
+        hx-target="#panel-productos"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+        if activo {
+            aria-current="true"
+        }
+    >{ label }</a>
+}
+
+// ProductoList renderiza la tabla con los productos. categoria es el filtro activo ("" = todos),
+// y solo cambia el mensaje cuando no hay nada para mostrar. nuevoID es el producto recién creado,
+// que sale resaltado (0 = ninguno).
+templ ProductoList(productos []db.Producto, categoria string, nuevoID int32) {
     <section id="lista-productos" class="tabla-contenedor">
-        if len(productos) == 0 {
+        if len(productos) == 0 && categoria != "" {
+            <p class="vacio">No hay productos en esta categoría.</p>
+        } else if len(productos) == 0 {
             <p class="vacio">Todavía no hay productos. Cargá el primero con el formulario de abajo.</p>
         } else {
             <table class="tabla">
@@ -27,7 +65,7 @@ templ ProductoList(productos []db.Producto) {
                 </thead>
                 <tbody>
                     for _, p := range productos {
-                        @ProductoFila(p)
+                        @filaProducto(p, p.ID == nuevoID)
                     }
                 </tbody>
             </table>
@@ -35,10 +73,15 @@ templ ProductoList(productos []db.Producto) {
     </section>
 }
 
-// ProductoFila renderiza una fila de la tabla en modo lectura, con los botones Editar y Borrar.
+// ProductoFila renderiza una fila de la tabla en modo lectura, con los botones de editar y borrar.
 // También es lo que devuelve el servidor al guardar o cancelar una edición.
 templ ProductoFila(p db.Producto) {
-    <tr>
+    @filaProducto(p, false)
+}
+
+// filaProducto es la fila en modo lectura; nuevo la resalta (el producto recién creado).
+templ filaProducto(p db.Producto, nuevo bool) {
+    <tr class={ templ.KV("nuevo", nuevo) }>
         <td>
             <div class="producto-nombre">{ p.Nombre }</div>
             if p.Descripcion.Valid {
@@ -57,18 +100,24 @@ templ ProductoFila(p db.Producto) {
         <td>
             <div class="acciones">
                 <button
-                    class="btn-fila btn-editar"
-                    hx-get={ fmt.Sprintf("/productos/%d/editar", p.ID) }
+                    class="boton-icono"
+                    aria-label={ "Editar " + p.Nombre }
+                    hx-get={ fmt.Sprintf("/admin/productos/%d/editar", p.ID) }
                     hx-target="closest tr"
                     hx-swap="outerHTML"
-                >Editar</button>
+                >
+                    @IconoEditar()
+                </button>
                 <button
-                    class="btn-fila peligro btn-borrar"
-                    hx-delete={ fmt.Sprintf("/productos/%d", p.ID) }
+                    class="boton-icono peligro"
+                    aria-label={ "Borrar " + p.Nombre }
+                    hx-delete={ fmt.Sprintf("/admin/productos/%d", p.ID) }
                     hx-target="closest tr"
                     hx-swap="outerHTML"
                     hx-confirm="¿Estás seguro?"
-                >Borrar</button>
+                >
+                    @IconoBorrar()
+                </button>
             </div>
         </td>
     </tr>
@@ -91,7 +140,7 @@ templ ProductoFilaEditar(id int32, f FormProducto) {
                 for _, c := range categorias {
                     <option value={ c.Valor } selected?={ f.Categoria == c.Valor }>{ c.Label }</option>
                 }
-                if f.Categoria != "" && !categoriaConocida(f.Categoria) {
+                if f.Categoria != "" && !CategoriaConocida(f.Categoria) {
                     <option value={ f.Categoria } selected>{ f.Categoria }</option>
                 }
             </select>
@@ -107,7 +156,7 @@ templ ProductoFilaEditar(id int32, f FormProducto) {
                 <button
                     type="button"
                     class="btn-fila btn-guardar"
-                    hx-put={ fmt.Sprintf("/productos/%d", id) }
+                    hx-put={ fmt.Sprintf("/admin/productos/%d", id) }
                     hx-include="closest tr"
                     hx-target="closest tr"
                     hx-swap="outerHTML"
@@ -115,7 +164,7 @@ templ ProductoFilaEditar(id int32, f FormProducto) {
                 <button
                     type="button"
                     class="btn-fila btn-cancelar"
-                    hx-get={ fmt.Sprintf("/productos/%d", id) }
+                    hx-get={ fmt.Sprintf("/admin/productos/%d", id) }
                     hx-target="closest tr"
                     hx-swap="outerHTML"
                 >Cancelar</button>
@@ -124,9 +173,10 @@ templ ProductoFilaEditar(id int32, f FormProducto) {
     </tr>
 }
 
-// categoriaConocida indica si la categoría está entre las del formulario. Si un producto tiene una
-// categoría vieja o distinta, la edición la conserva en el select en lugar de cambiarla en silencio.
-func categoriaConocida(c string) bool {
+// CategoriaConocida indica si la categoría está entre las del formulario. Si un producto tiene una
+// categoría vieja o distinta, la edición la conserva en el select en lugar de cambiarla en silencio,
+// y el filtro de la lista la ignora (muestra todos).
+func CategoriaConocida(c string) bool {
 	for _, k := range categorias {
 		if k.Valor == c {
 			return true
@@ -163,4 +213,12 @@ func etiquetaCategoria(c string) string {
 		return c
 	}
 	return strings.ToUpper(c[:1]) + c[1:]
+}
+
+// conteoProductos arma el texto del contador: "1 producto" o "N productos".
+func conteoProductos(n int) string {
+	if n == 1 {
+		return "1 producto"
+	}
+	return fmt.Sprintf("%d productos", n)
 }

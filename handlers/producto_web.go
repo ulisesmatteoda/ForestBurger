@@ -21,7 +21,7 @@ func (a *API) Index(w http.ResponseWriter, r *http.Request) {
 		categoria = ""
 	}
 	if !esHTMX(r) {
-		a.renderIndex(w, r, categoria, views.FormProducto{}, http.StatusOK)
+		a.renderIndex(w, r, categoria, nil, http.StatusOK)
 		return
 	}
 	productos, err := a.listarProductos(r.Context(), categoria)
@@ -30,12 +30,31 @@ func (a *API) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	views.ProductosPanel(productos, categoria).Render(r.Context(), w)
+	views.ProductosPanel(productos, categoria, 0).Render(r.Context(), w)
+}
+
+// NuevoProducto: GET /admin/productos/nuevo
+// Abre el modal de alta. Con htmx devuelve solo el modal (va adentro de #modal); sin htmx (link
+// directo o F5) la página completa con el modal ya abierto.
+func (a *API) NuevoProducto(w http.ResponseWriter, r *http.Request) {
+	if !esHTMX(r) {
+		a.renderIndex(w, r, "", &views.FormProducto{}, http.StatusOK)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	views.ModalNuevoProducto(views.FormProducto{}).Render(r.Context(), w)
+}
+
+// CerrarModal: GET /admin/productos/nuevo/cerrar
+// Responde vacío: htmx lo pone adentro de #modal y el modal desaparece.
+func (a *API) CerrarModal(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
 }
 
 // CrearProducto: POST /admin/productos
-// Recibe el formulario (lo manda HTMX), valida y guarda. Responde con dos fragmentos:
-// la lista actualizada y el formulario (vacío si salió bien, con el mensaje si hubo error).
+// Valida y guarda lo que manda el modal. Con htmx, si sale bien devuelve el panel con todos los
+// productos (el nuevo resaltado) y cierra el modal por OOB; si hay error, redirige la respuesta al
+// modal (HX-Retarget) para mostrar el mensaje sin tocar la tabla. Sin htmx: redirect o página.
 func (a *API) CrearProducto(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Formulario inválido", http.StatusBadRequest)
@@ -46,11 +65,11 @@ func (a *API) CrearProducto(w http.ResponseWriter, r *http.Request) {
 	req, msg := armarRequest(form)
 	if msg != "" {
 		form.Error = msg
-		a.renderFragmentos(w, r, form)
+		a.errorAlta(w, r, form)
 		return
 	}
 
-	_, err := a.q.CreateProducto(r.Context(), sqlc.CreateProductoParams{
+	p, err := a.q.CreateProducto(r.Context(), sqlc.CreateProductoParams{
 		Nombre:      req.Nombre,
 		Categoria:   req.Categoria,
 		Precio:      req.precioStr(),
@@ -59,12 +78,37 @@ func (a *API) CrearProducto(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		form.Error = "No se pudo guardar el producto"
-		a.renderFragmentos(w, r, form)
+		a.errorAlta(w, r, form)
 		return
 	}
 
-	// Sin redirect: se devuelve la lista y el formulario vacío (OOB).
-	a.renderFragmentos(w, r, views.FormProducto{})
+	if !esHTMX(r) {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+	productos, err := a.q.ListProductos(r.Context())
+	if err != nil {
+		http.Error(w, "No se pudieron cargar los productos", http.StatusInternalServerError)
+		return
+	}
+	// El panel vuelve sin filtro, así que la URL también.
+	w.Header().Set("HX-Push-Url", "/admin")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	views.ProductosPanel(productos, "", p.ID).Render(r.Context(), w)
+	views.ModalCerradoOOB().Render(r.Context(), w)
+}
+
+// errorAlta muestra el modal con el mensaje y lo que se escribió. Con htmx responde 200 (htmx no
+// hace el swap de los 4xx) y cambia el destino al modal; sin htmx, la página con el modal y 400.
+func (a *API) errorAlta(w http.ResponseWriter, r *http.Request, form views.FormProducto) {
+	if !esHTMX(r) {
+		a.renderIndex(w, r, "", &form, http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("HX-Retarget", "#modal")
+	w.Header().Set("HX-Reswap", "innerHTML")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	views.ModalNuevoProducto(form).Render(r.Context(), w)
 }
 
 // FilaProducto: GET /admin/productos/{id}
@@ -230,8 +274,8 @@ func (a *API) renderFilaEditar(w http.ResponseWriter, r *http.Request, id int32,
 }
 
 // renderIndex trae los productos (filtrados por categoria, "" = todos) y renderiza la página
-// completa con el estado del formulario.
-func (a *API) renderIndex(w http.ResponseWriter, r *http.Request, categoria string, form views.FormProducto, status int) {
+// completa; modal no nil la deja con el modal de alta abierto y esos datos.
+func (a *API) renderIndex(w http.ResponseWriter, r *http.Request, categoria string, modal *views.FormProducto, status int) {
 	productos, err := a.listarProductos(r.Context(), categoria)
 	if err != nil {
 		http.Error(w, "No se pudieron cargar los productos", http.StatusInternalServerError)
@@ -239,19 +283,7 @@ func (a *API) renderIndex(w http.ResponseWriter, r *http.Request, categoria stri
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	views.IndexPage(productos, categoria, form).Render(r.Context(), w)
-}
-
-// renderFragmentos devuelve la lista actualizada y, como segundo fragmento (OOB), el formulario.
-func (a *API) renderFragmentos(w http.ResponseWriter, r *http.Request, form views.FormProducto) {
-	productos, err := a.q.ListProductos(r.Context())
-	if err != nil {
-		http.Error(w, "No se pudieron cargar los productos", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	views.ProductoList(productos, "").Render(r.Context(), w)
-	views.ProductoFormOOB(form).Render(r.Context(), w)
+	views.IndexPage(productos, categoria, modal).Render(r.Context(), w)
 }
 
 // listarProductos trae los de una categoría, o todos si categoria es "".
