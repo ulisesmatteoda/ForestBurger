@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -11,10 +12,25 @@ import (
 	"forestburger/views"
 )
 
-// Index: GET /
-// Trae todos los productos y renderiza la página con el formulario vacío.
+// Index: GET /admin (?categoria=<valor> filtra la lista)
+// Una categoría que no existe se ignora y se muestran todos, sin error. Con htmx (un chip) devuelve
+// solo el panel; sin htmx (F5, un link) la página completa con el filtro ya aplicado.
 func (a *API) Index(w http.ResponseWriter, r *http.Request) {
-	a.renderIndex(w, r, views.FormProducto{}, http.StatusOK)
+	categoria := r.URL.Query().Get("categoria")
+	if !views.CategoriaConocida(categoria) {
+		categoria = ""
+	}
+	if !esHTMX(r) {
+		a.renderIndex(w, r, categoria, views.FormProducto{}, http.StatusOK)
+		return
+	}
+	productos, err := a.listarProductos(r.Context(), categoria)
+	if err != nil {
+		http.Error(w, "No se pudieron cargar los productos", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	views.ProductosPanel(productos, categoria).Render(r.Context(), w)
 }
 
 // CrearProducto: POST /admin/productos
@@ -213,16 +229,17 @@ func (a *API) renderFilaEditar(w http.ResponseWriter, r *http.Request, id int32,
 	views.ProductoFilaEditar(id, form).Render(r.Context(), w)
 }
 
-// renderIndex trae los productos y renderiza la página completa con el estado del formulario.
-func (a *API) renderIndex(w http.ResponseWriter, r *http.Request, form views.FormProducto, status int) {
-	productos, err := a.q.ListProductos(r.Context())
+// renderIndex trae los productos (filtrados por categoria, "" = todos) y renderiza la página
+// completa con el estado del formulario.
+func (a *API) renderIndex(w http.ResponseWriter, r *http.Request, categoria string, form views.FormProducto, status int) {
+	productos, err := a.listarProductos(r.Context(), categoria)
 	if err != nil {
 		http.Error(w, "No se pudieron cargar los productos", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	views.IndexPage(productos, form).Render(r.Context(), w)
+	views.IndexPage(productos, categoria, form).Render(r.Context(), w)
 }
 
 // renderFragmentos devuelve la lista actualizada y, como segundo fragmento (OOB), el formulario.
@@ -233,6 +250,21 @@ func (a *API) renderFragmentos(w http.ResponseWriter, r *http.Request, form view
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	views.ProductoList(productos).Render(r.Context(), w)
+	views.ProductoList(productos, "").Render(r.Context(), w)
 	views.ProductoFormOOB(form).Render(r.Context(), w)
+}
+
+// listarProductos trae los de una categoría, o todos si categoria es "".
+func (a *API) listarProductos(ctx context.Context, categoria string) ([]sqlc.Producto, error) {
+	if categoria == "" {
+		return a.q.ListProductos(ctx)
+	}
+	return a.q.ListProductosPorCategoria(ctx, categoria)
+}
+
+// esHTMX indica si el pedido lo hizo htmx y espera un fragmento. La excepción es cuando htmx
+// reconstruye una página del historial (botón "atrás" sin la página en caché): ahí necesita el
+// HTML completo, aunque también mande HX-Request.
+func esHTMX(r *http.Request) bool {
+	return r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true"
 }

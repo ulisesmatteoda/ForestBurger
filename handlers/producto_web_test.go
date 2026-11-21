@@ -111,7 +111,142 @@ func TestIndex_MuestraFormularioYProductos(t *testing.T) {
 		t.Errorf("Content-Type = %q, quiero text/html", ct)
 	}
 	body := rec.Body.String()
-	for _, esperado := range []string{"<form", `hx-post="/admin/productos"`, `hx-target="#lista-productos"`, `id="lista-productos"`, `id="product-form-container"`, "Forest Clásica"} {
+	for _, esperado := range []string{"<form", `hx-post="/admin/productos"`, `hx-target="#lista-productos"`, `id="lista-productos"`, `id="product-form-container"`, "Forest Clásica", `aria-label="Editar Forest Clásica"`, `aria-label="Borrar Forest Clásica"`} {
+		if !strings.Contains(body, esperado) {
+			t.Errorf("el HTML no contiene %q", esperado)
+		}
+	}
+}
+
+// ---------- filtros por categoría ----------
+
+// cargarHamburguesaYBebida deja en la base un producto de cada categoría, para ver qué filtra.
+func cargarHamburguesaYBebida(t *testing.T, q *sqlc.Queries) {
+	t.Helper()
+	for _, p := range []sqlc.CreateProductoParams{
+		{Nombre: "Forest Clásica", Categoria: "hamburguesa", Precio: "9500.00"},
+		{Nombre: "Coca-Cola", Categoria: "bebida", Precio: "2500.00"},
+	} {
+		if _, err := q.CreateProducto(context.Background(), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// pedirPanel hace GET a la ruta; con htmx=true manda el header que pone htmx en cada pedido.
+func pedirPanel(mux http.Handler, ruta string, htmx bool) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, ruta, nil)
+	if htmx {
+		req.Header.Set("HX-Request", "true")
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestIndex_SinFiltroMuestraChipsYContador(t *testing.T) {
+	mux, q := setup(t)
+	cargarHamburguesaYBebida(t, q)
+
+	rec := pedirPanel(mux, "/admin", false)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, quiero 200", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, esperado := range []string{
+		`id="panel-productos"`,
+		`href="/admin"`,
+		`href="/admin?categoria=hamburguesa"`,
+		`href="/admin?categoria=veggie"`,
+		`href="/admin?categoria=acompa%C3%B1amiento"`,
+		`href="/admin?categoria=bebida"`,
+		`hx-target="#panel-productos"`,
+		`hx-push-url="true"`,
+		"Forest Clásica", "Coca-Cola", "2 productos",
+	} {
+		if !strings.Contains(body, esperado) {
+			t.Errorf("el HTML no contiene %q", esperado)
+		}
+	}
+}
+
+func TestIndex_FiltroSinHTMXDevuelvePaginaCompleta(t *testing.T) {
+	mux, q := setup(t)
+	cargarHamburguesaYBebida(t, q)
+
+	rec := pedirPanel(mux, "/admin?categoria=bebida", false)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, quiero 200", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, esperado := range []string{"<html", "Coca-Cola", "1 producto", `class="chip activo" href="/admin?categoria=bebida"`} {
+		if !strings.Contains(body, esperado) {
+			t.Errorf("el HTML no contiene %q", esperado)
+		}
+	}
+	if strings.Contains(body, "Forest Clásica") {
+		t.Error("el filtro por bebida no debería mostrar la hamburguesa")
+	}
+}
+
+func TestIndex_FiltroConHTMXDevuelveSoloElPanel(t *testing.T) {
+	mux, q := setup(t)
+	cargarHamburguesaYBebida(t, q)
+
+	rec := pedirPanel(mux, "/admin?categoria=bebida", true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, quiero 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "<html") {
+		t.Error("con HX-Request tiene que devolver solo el panel, no la página completa")
+	}
+	if !strings.Contains(body, `id="panel-productos"`) || !strings.Contains(body, "Coca-Cola") {
+		t.Errorf("el panel no trae la bebida: %s", body)
+	}
+	if strings.Contains(body, "Forest Clásica") {
+		t.Error("el filtro por bebida no debería mostrar la hamburguesa")
+	}
+}
+
+func TestIndex_RestaurarHistorialDevuelvePaginaCompleta(t *testing.T) {
+	mux, q := setup(t)
+	cargarHamburguesaYBebida(t, q)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin?categoria=bebida", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-History-Restore-Request", "true")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if !strings.Contains(rec.Body.String(), "<html") {
+		t.Error("al restaurar el historial htmx necesita la página completa")
+	}
+}
+
+func TestIndex_CategoriaInexistenteMuestraTodos(t *testing.T) {
+	mux, q := setup(t)
+	cargarHamburguesaYBebida(t, q)
+
+	rec := pedirPanel(mux, "/admin?categoria=postres", false)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, quiero 200", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, esperado := range []string{"Forest Clásica", "Coca-Cola", "2 productos", `class="chip activo" href="/admin"`} {
+		if !strings.Contains(body, esperado) {
+			t.Errorf("el HTML no contiene %q", esperado)
+		}
+	}
+}
+
+func TestIndex_CategoriaSinProductosAvisa(t *testing.T) {
+	mux, q := setup(t)
+	cargarHamburguesaYBebida(t, q)
+
+	rec := pedirPanel(mux, "/admin?categoria=veggie", true)
+	body := rec.Body.String()
+	for _, esperado := range []string{"No hay productos en esta categoría.", "0 productos"} {
 		if !strings.Contains(body, esperado) {
 			t.Errorf("el HTML no contiene %q", esperado)
 		}
