@@ -53,6 +53,16 @@ func (a *API) RutasAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/extras/{id}/borrar", a.ConfirmarBorrarExtra)
 	mux.HandleFunc("DELETE /admin/extras/{id}", a.BorrarExtra)
 
+	mux.HandleFunc("GET /admin/pedidos", a.Pedidos)
+	// "cargar" es un tramo literal: el mux lo prefiere antes que {id}.
+	mux.HandleFunc("GET /admin/pedidos/aviso", a.AvisoPedido)
+	mux.HandleFunc("GET /admin/pedidos/cargar", a.CargarPedido)
+	mux.HandleFunc("POST /admin/pedidos/cargar/armar", a.ArmarPedido)
+	mux.HandleFunc("POST /admin/pedidos/cargar", a.GuardarPedido)
+	mux.HandleFunc("GET /admin/pedidos/{id}", a.DetallePedido)
+	mux.HandleFunc("GET /admin/pedidos/{id}/baja", a.ConfirmarBajaPedido)
+	mux.HandleFunc("POST /admin/pedidos/{id}/{accion}", a.AccionPedido)
+
 	mux.HandleFunc("GET /admin/ajustes", a.Ajustes)
 	mux.HandleFunc("POST /admin/ajustes", a.GuardarAjustes)
 	mux.HandleFunc("GET /admin/ajustes/transferencia", a.VistaTransferencia)

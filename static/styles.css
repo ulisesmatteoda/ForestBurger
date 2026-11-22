@@ -10,6 +10,11 @@
   --fb-peligro: #F28B82;
   --fb-radius-md: 12px;
   --fb-radius-lg: 14px;
+  /* Estados de un pedido (las pastillas de la lista y del detalle). */
+  --fb-estado-pendiente: #F2C94C;
+  --fb-estado-confirmado: #9CC8F5;
+  --fb-estado-en-camino: #C9B6F2;
+  --fb-whatsapp: #25D366;
 }
 
 * { box-sizing: border-box; }
@@ -336,6 +341,132 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 .aviso-cambios .guardado { color: var(--fb-crema); font-weight: 600; }
 @media (max-width: 1000px) { .ajustes-grilla { grid-template-columns: 1fr; } }
 
+/* ---------- Pedidos ---------- */
+.modal-cabecera-derecha { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.panel-pedidos { display: flex; flex-direction: column; gap: 24px; }
+.filtro-fecha { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.rango { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.rango .campo input { width: 170px; color-scheme: dark; }
+.rango .boton { height: 48px; }
+.lista-encabezado { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lista-titulo { margin: 0; }
+.pedido-numero { font-weight: 700; white-space: nowrap; }
+.pedido-hora { color: var(--fb-texto-secundario); white-space: nowrap; }
+.pedido-cliente { font-weight: 700; font-size: 15px; }
+
+/* Métricas y gráfico de ventas (hoy y esta semana). */
+.metricas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.metrica, .grafico {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 20px 22px; background: var(--fb-verde-oscuro);
+  border: 1px solid var(--fb-divisor); border-radius: 18px;
+}
+.metrica-titulo { font-size: 12px; font-weight: 700; letter-spacing: 2px; color: var(--fb-texto-secundario); }
+.metrica-valor { font-family: 'Barlow Semi Condensed', sans-serif; font-weight: 800; font-size: 34px; line-height: 1.1; color: var(--fb-texto); }
+.metrica-detalle, .metrica-pagos { font-size: 12px; color: var(--fb-texto-secundario); }
+.metrica-pagos { margin-top: 4px; color: var(--fb-crema); }
+.grafico { gap: 20px; }
+.grafico-sub { margin: 6px 0 0; font-size: 12px; color: var(--fb-texto-secundario); }
+/* Cada barra mide --alto (0 a 100: el % del día que más vendió) de los 150px del gráfico. */
+.barras { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); align-items: end; gap: 12px; height: 210px; }
+.barra-dia { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%; }
+.barra-valor { font-size: 11px; color: var(--fb-texto-secundario); white-space: nowrap; }
+.barra-grafico {
+  width: 44px; max-width: 100%; min-height: 4px; height: calc(var(--alto) * 1.5px);
+  background: var(--fb-crema); opacity: 0.85; border-radius: 6px 6px 2px 2px;
+}
+.barra-dia-nombre { font-size: 13px; font-weight: 600; }
+.barra-dia.hoy .barra-grafico { opacity: 1; }
+.barra-dia.hoy .barra-valor { color: var(--fb-texto); font-weight: 700; }
+.grafico-total { display: flex; justify-content: space-between; padding-top: 14px; border-top: 1px solid var(--fb-divisor); font-size: 14px; }
+@media (max-width: 800px) { .metricas { grid-template-columns: 1fr; } .barra-valor { font-size: 9px; } }
+
+/* Cargar pedido: productos a la izquierda, el pedido a la derecha. */
+.carga { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.carga-productos, .carga-pedido { display: flex; flex-direction: column; gap: 16px; padding: 24px 32px; }
+.carga-pedido { border-left: 1px solid var(--fb-divisor); }
+.carga-titulo { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 2px; color: var(--fb-texto-secundario); }
+.carga-lista { border: 1px solid var(--fb-divisor); border-radius: var(--fb-radius-lg); overflow: hidden; }
+.carga-producto { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--fb-divisor); }
+.carga-producto:last-child { border-bottom: 0; }
+.carga-producto .producto-nombre { font-size: 17px; }
+.carga-tamanos { display: flex; gap: 8px; }
+.boton-tamano {
+  display: flex; flex-direction: column; align-items: center; min-width: 72px; padding: 4px 10px;
+  background: transparent; border: 1px solid var(--fb-borde); border-radius: var(--fb-radius-md);
+  color: var(--fb-crema); font-family: inherit; cursor: pointer;
+}
+.boton-tamano span { font-size: 10px; color: var(--fb-texto-secundario); }
+.boton-tamano strong { font-size: 13px; }
+.boton-tamano:hover { border-color: var(--fb-crema); }
+button.chip { font-family: inherit; }
+.carga-item { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--fb-divisor); border-radius: var(--fb-radius-lg); }
+.carga-item-fila { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.carga-item-nombre { display: block; font-weight: 700; }
+.carga-item-detalle { display: block; font-size: 12px; color: var(--fb-texto-secundario); }
+.carga-item-cantidad { display: flex; align-items: center; gap: 12px; }
+.carga-item-total { min-width: 70px; text-align: right; }
+.stepper { display: flex; align-items: center; gap: 4px; padding: 3px; border: 1px solid var(--fb-borde); border-radius: var(--fb-radius-md); }
+.stepper-boton { width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--fb-crema); font-size: 18px; cursor: pointer; }
+.stepper-boton.mas { background: var(--fb-crema); color: var(--fb-verde); }
+.stepper-numero { min-width: 24px; text-align: center; font-weight: 700; }
+.carga-item .chip { padding: 6px 12px; font-size: 13px; }
+.carga-descuento { display: flex; flex-direction: column; gap: 10px; }
+.carga-descuento .desc-valor { width: 90px; }
+.carga-cuentas { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--fb-divisor); border-radius: var(--fb-radius-lg); }
+.carga-cuentas .linea-cuenta { display: flex; justify-content: space-between; }
+.carga-cuentas .descuento { color: var(--fb-peligro); }
+.carga-total {
+  display: flex; justify-content: space-between; padding-top: 8px; border-top: 1px solid var(--fb-divisor);
+  font-family: 'Barlow Semi Condensed', sans-serif; font-weight: 800; font-size: 26px;
+}
+.boton:disabled { opacity: 0.5; cursor: default; }
+/* Texto que solo leen los lectores de pantalla (el "+" y el "−" del stepper). */
+.solo-lectores { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 900px) { .carga { grid-template-columns: 1fr; } .carga-pedido { border-left: 0; border-top: 1px solid var(--fb-divisor); } }
+
+/* Pastillas de estado. */
+.estado {
+  display: inline-block; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  font-size: 12px; font-weight: 700; color: var(--fb-verde-oscuro);
+}
+.estado-pendiente { background: var(--fb-estado-pendiente); }
+.estado-confirmado { background: var(--fb-estado-confirmado); }
+.estado-en_camino { background: var(--fb-estado-en-camino); }
+.estado-entregado { background: var(--fb-crema); }
+.estado-cancelado { background: transparent; border: 1px solid var(--fb-peligro); color: var(--fb-peligro); }
+
+/* Detalle de un pedido. */
+.detalle-pedido { gap: 18px; }
+.datos-pedido { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; margin: 0; }
+.datos-pedido dt { font-size: 12px; color: var(--fb-texto-secundario); }
+.datos-pedido dd { margin: 2px 0 0; font-weight: 700; }
+.datos-pedido .datos-notas { grid-column: 1 / -1; }
+.datos-notas dd { font-weight: 400; }
+.lineas-pedido { border: 1px solid var(--fb-divisor); border-radius: var(--fb-radius-lg); overflow: hidden; }
+.linea { display: flex; justify-content: space-between; gap: 16px; padding: 12px 14px; border-bottom: 1px solid var(--fb-divisor); }
+.linea:last-child { border-bottom: 0; }
+.linea .precio, .linea-total span:last-child { font-weight: 700; }
+.linea-cuenta { font-size: 14px; color: var(--fb-texto-secundario); }
+.linea-total { background: var(--fb-verde-oscuro); font-weight: 700; }
+.seguimiento {
+  display: flex; flex-direction: column; gap: 4px; padding: 16px;
+  border: 1px dashed var(--fb-borde); border-radius: var(--fb-radius-lg);
+}
+.seguimiento-etiqueta { font-size: 12px; color: var(--fb-texto-secundario); }
+.seguimiento-link { font-weight: 700; overflow-wrap: anywhere; user-select: all; }
+.seguimiento-botones { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.boton-whatsapp { background: var(--fb-whatsapp); color: var(--fb-verde-oscuro); }
+.historial { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--fb-texto-secundario); }
+.historial strong { color: var(--fb-texto); }
+/* El pie del pendiente: la demora arriba a la izquierda y los botones abajo a la derecha (con más
+   especificidad que .modal-pie, que viene después). */
+.modal-pie.pie-detalle { flex-direction: column; align-items: stretch; gap: 16px; }
+.pie-detalle .modal-acciones { justify-content: flex-end; }
+.pie-detalle .demoras .chips { justify-content: flex-start; }
+fieldset.demoras { margin: 0; padding: 0; border: 0; }
+@media (max-width: 600px) { .datos-pedido { grid-template-columns: 1fr; } }
+
 /* ---------- Celular: la barra lateral pasa arriba ---------- */
 @media (max-width: 800px) {
   .app { flex-direction: column; }
@@ -392,10 +523,12 @@ legend.campo-label { padding: 0; margin-bottom: 6px; }
 /* Confirmación de borrado: el mismo modal, más angosto y con la acción peligrosa a la derecha. */
 .modal.chico { max-width: 460px; }
 .modal.mediano { max-width: 560px; }
+.modal.ancho { max-width: 1100px; }
 .boton-peligro { background: var(--fb-peligro); color: #3B0A06; }
 .confirmar-texto { margin: 0; font-size: 16px; line-height: 1.5; color: var(--fb-crema); }
 .confirmar-texto strong { color: var(--fb-texto); }
 .pie-fin { justify-content: flex-end; }
+.aviso-en-curso { margin: 12px 0 0; padding: 10px 12px; border-left: 3px solid var(--fb-crema); background: var(--fb-superficie); font-size: 14px; line-height: 1.45; color: var(--fb-texto-secundario); }
 tr.nuevo td { background: rgba(232, 230, 225, 0.12); }
 
 /* ---------- Extras ---------- */
@@ -431,3 +564,23 @@ body:has(.modal-fondo) { overflow: hidden; }
 .fila-edicion td { vertical-align: top; }
 .fila-edicion .input-fila + .input-fila { margin-top: 8px; }
 .fila-edicion .error { margin: 0 0 8px; }
+
+/* Un grupo que solo agrupa para htmx: sus hijos se acomodan como si no estuviera. */
+.contenidos { display: contents; }
+
+/* ---------- Aviso de pedido nuevo (arriba de todas las pantallas del panel) ---------- */
+.aviso-pedido {
+  display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding: 14px 16px 14px 20px;
+  background: var(--fb-estado-pendiente); color: #3A2A05; border-radius: 12px;
+}
+.aviso-campana { display: flex; animation: campana 1s ease-in-out infinite; transform-origin: 50% 10%; }
+@keyframes campana {
+  0%, 50%, 100% { transform: rotate(0); }
+  10%, 30% { transform: rotate(14deg); }
+  20%, 40% { transform: rotate(-14deg); }
+}
+@media (prefers-reduced-motion: reduce) { .aviso-campana { animation: none; } }
+.aviso-textos { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; font-size: 13px; }
+.aviso-textos strong { font-size: 16px; font-weight: 700; }
+.aviso-mas { margin-left: 6px; font-weight: 600; opacity: 0.75; }
+.aviso-ver { background: #3A2A05; color: var(--fb-estado-pendiente); border-color: #3A2A05; }

@@ -34,16 +34,27 @@ func TestBarraLateral_SeccionesYActiva(t *testing.T) {
 	if !strings.Contains(html, `href="/admin" class="nav-item activo" aria-current="page">Productos`) {
 		t.Errorf("Productos tendría que estar activa: %s", html)
 	}
-	for _, s := range []string{"Extras", "Pedidos", "Ajustes"} {
-		if !strings.Contains(html, s) {
-			t.Errorf("falta la sección %s", s)
+	for _, ruta := range []string{"/admin/extras", "/admin/pedidos", "/admin/ajustes"} {
+		if !strings.Contains(html, `href="`+ruta+`" class="nav-item">`) {
+			t.Errorf("falta el link a %s, sin resaltar", ruta)
 		}
 	}
-	if !strings.Contains(html, `href="/admin/extras" class="nav-item">Extras`) {
-		t.Error("Extras tendría que ser un link, sin resaltar")
+	if strings.Contains(html, "Pronto") {
+		t.Error("ya no queda ninguna sección por venir")
 	}
-	// Las que no existen todavía no son links (darían 404).
-	if strings.Contains(html, `href="/admin/pedidos"`) {
-		t.Error("Pedidos todavía no existe: no tendría que ser un link")
+	if !strings.Contains(html, `src="/static/panel.js?v=`) {
+		t.Error("el panel tiene que cargar panel.js (COPIAR)")
+	}
+}
+
+func TestMetricas_AltoDeLasBarras(t *testing.T) {
+	html := render(t, Metricas(MetricasPedidos{
+		HoyTotal: "412500.00", SemanaTotal: "1774000.00", Ticket: "22917.00",
+		Barras: []BarraVenta{{Dia: "Lun", Valor: "198000.00", Alto: 48}, {Dia: "Sáb (hoy)", Valor: "412500.00", Alto: 100, EsHoy: true}, {Dia: "Dom"}},
+	}, false))
+	for _, esperado := range []string{`style="--alto: 48;"`, `style="--alto: 100;"`, `class="barra-dia hoy"`, "$412.500", "$22.917", "Sáb (hoy)"} {
+		if !strings.Contains(html, esperado) {
+			t.Errorf("el gráfico no contiene %q: %s", esperado, html)
+		}
 	}
 }

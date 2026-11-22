@@ -215,6 +215,9 @@ func CategoriaConocida(c string) bool {
 	return false
 }
 
+// Precio es formatPrecio para los handlers, que arman algunos textos con precios adentro.
+func Precio(s string) string { return formatPrecio(s) }
+
 // formatPrecio pasa "14500.00" (como lo devuelve sqlc) a "$14.500". Muestra centavos solo si hay.
 func formatPrecio(s string) string {
 	f, err := strconv.ParseFloat(s, 64)

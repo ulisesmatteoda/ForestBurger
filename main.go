@@ -12,6 +12,7 @@ import (
 	"forestburger/auth"
 	sqlc "forestburger/db/sqlc"
 	handlers "forestburger/handlers"
+	"forestburger/seed"
 	"forestburger/views"
 
 	_ "github.com/lib/pq"
@@ -47,14 +48,23 @@ func main() {
 	api := handlers.NewAPI(conn)
 
 	// Solo en desarrollo (DEV_ADMIN_EMAIL y DEV_ADMIN_PASSWORD en el .env): deja un admin listo para
-	// entrar, porque make run arranca con la base vacía. Si falla, se avisa pero la app arranca igual.
+	// entrar (make run-app arranca con la base vacía). Si falla, se avisa pero la app arranca igual.
 	if email, err := auth.AdminDesarrollo(context.Background(), queries); err != nil {
 		log.Printf("Admin de desarrollo: %v", err)
 	} else if email != "" {
 		log.Printf("Admin de desarrollo listo: %s", email)
 	}
 
+	// Solo en desarrollo (DEV_DATOS_PRUEBA=1) y con la base sin productos: carga productos, extras,
+	// ajustes y pedidos de los últimos días para poder ver el panel. Una sola vez.
+	if res, err := seed.DatosPrueba(context.Background(), conn); err != nil {
+		log.Printf("Datos de prueba: %v", err)
+	} else if res.Productos > 0 {
+		log.Printf("Datos de prueba cargados: %d productos, %d extras, %d pedidos", res.Productos, res.Extras, res.Pedidos)
+	}
+
 	views.VersionEstilos = versionDe("static/styles.css")
+	views.VersionPanelJS = versionDe("static/panel.js")
 
 	// Router: acá se registran los handlers de la API, que reciben queries.
 	mux := http.NewServeMux()

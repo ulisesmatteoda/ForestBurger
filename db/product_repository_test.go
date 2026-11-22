@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"testing"
 
 	sqlc "forestburger/db/sqlc"
@@ -15,7 +16,11 @@ import (
 func setupTestDB(t *testing.T) (*sqlc.Queries, func()) {
 	t.Helper()
 
-	connStr := "postgres://usuario:password@localhost:5432/forestburger?sslmode=disable"
+	// La base de test (make test la recrea); nunca la de desarrollo, que tiene datos.
+	connStr := os.Getenv("DATABASE_URL")
+	if connStr == "" {
+		connStr = "postgres://usuario:password@localhost:5432/forestburger_test?sslmode=disable"
+	}
 	conn, err := sql.Open("postgres", connStr)
 	if err != nil {
 		t.Fatalf("Error abriendo conexión: %v", err)

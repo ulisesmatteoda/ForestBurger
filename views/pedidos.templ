@@ -1,0 +1,484 @@
+package views
+
+import (
+	"fmt"
+
+	"forestburger/pedidos"
+)
+
+// Lo que muestra la sección Pedidos. Los handlers arman estos datos ya formateados (fechas, textos
+// de entrega y pago, montos como "17500.00"); acá solo se dibujan.
+
+// Chip es un filtro de la lista: un link común (anda sin JS) que con htmx cambia solo el panel.
+type Chip struct {
+	Label, URL string
+	Activo     bool
+}
+
+// FiltroPedidos es el filtro actual, tal como va en la URL, más los chips ya armados.
+type FiltroPedidos struct {
+	Rango        string // hoy, ayer, semana, mes; vacío si es un rango desde/hasta
+	Desde, Hasta string // "2026-11-19", para los inputs de fecha
+	Estado       string
+	Titulo       string // "PEDIDOS DE HOY", "PEDIDOS DEL 19/11 AL 22/11"
+	ChipsRango   []Chip
+	ChipsEstado  []Chip
+}
+
+// FilaPedido es un renglón de la lista.
+type FilaPedido struct {
+	ID                     int32
+	Hora                   string // "21:05", o "Vie 21:05" si la lista es de varios días
+	Cliente, Resumen       string
+	Entrega, Pago, Total   string
+	Estado                 string
+}
+
+// LineaPedido es un renglón del detalle: "2x Cheese Bacon (doble) + cheddar" y su total.
+type LineaPedido struct {
+	Texto, Total string
+}
+
+// DetallePedido es todo lo que muestra el modal de un pedido.
+type DetallePedido struct {
+	ID                     int32
+	Subtitulo              string // "Hoy 21:05 · Vino por la web"
+	Estado                 string
+	Cliente, Telefono      string
+	Entrega, Pago, Notas   string
+	Lineas                 []LineaPedido
+	Subtotal, Descuento    string // vacíos si no hay descuento ni envío
+	DescuentoTexto         string // "Descuento 20% (amigos)"
+	Envio                  string
+	Total                  string
+	Historial              []EventoHistorial
+	Link, WhatsApp         string
+	Acciones               []string // pedidos.AccionesPara: qué botones van en el pie
+	Aviso                  string   // "Este pedido ya cambió de estado"
+}
+
+type EventoHistorial struct {
+	Hora, Texto string
+}
+
+// MetricasPedidos son las tarjetas y el gráfico de ventas, ya formateados (los montos como
+// "17500.00"). Siempre de hoy y de esta semana, sin los pedidos cancelados.
+type MetricasPedidos struct {
+	HoyTotal, HoyDetalle             string // "18 pedidos · +3,5% vs. ayer"
+	HoyEfectivo, HoyTransferencia    string
+	SemanaTotal, SemanaDetalle       string // "96 pedidos · lun 16 al dom 22/11"
+	SemanaEfectivo, SemanaTransferencia string
+	Ticket                           string // vacío si hoy no hubo pedidos
+	SemanaTitulo                     string // "Semana del 16 al 22 de noviembre"
+	Barras                           []BarraVenta
+}
+
+// BarraVenta es un día del gráfico. Valor vacío: el día todavía no llegó.
+type BarraVenta struct {
+	Dia, Valor string
+	Alto       int // % del día que más vendió
+	EsHoy      bool
+}
+
+// PedidosPage es la sección Pedidos. modal no nil sale abierto (el detalle de un pedido o
+// "Cargar pedido", por un link directo o F5).
+templ PedidosPage(hoy string, m MetricasPedidos, f FiltroPedidos, filas []FilaPedido, modal templ.Component) {
+	@Layout("Pedidos", SeccionPedidos) {
+		<header class="encabezado">
+			<div>
+				<h1>PEDIDOS</h1>
+				<p class="subtitulo">{ hoy }</p>
+			</div>
+			<a
+				href="/admin/pedidos/cargar"
+				class="boton boton-primario"
+				hx-get="/admin/pedidos/cargar"
+				hx-target="#modal"
+				hx-swap="innerHTML"
+			>+ CARGAR PEDIDO</a>
+		</header>
+		@Metricas(m, false)
+		@PedidosPanel(f, filas, false)
+		<div id="modal">
+			if modal != nil {
+				@modal
+			}
+		</div>
+	}
+}
+
+// Metricas son las tres tarjetas y el gráfico de la semana. Van fuera de #panel-pedidos: los
+// filtros de la lista no las cambian.
+// oob: la respuesta de "Cargar pedido" la manda fuera de banda para que se vea el pedido nuevo.
+templ Metricas(m MetricasPedidos, oob bool) {
+	<div
+		id="metricas"
+		class="metricas-y-grafico"
+		if oob {
+			hx-swap-oob="true"
+		}
+	>
+	<section class="metricas" aria-label="Ventas">
+		<div class="metrica">
+			<span class="metrica-titulo">VENTAS DE HOY</span>
+			<span class="metrica-valor">{ formatPrecio(m.HoyTotal) }</span>
+			<span class="metrica-detalle">{ m.HoyDetalle }</span>
+			@desglosePago(m.HoyEfectivo, m.HoyTransferencia)
+		</div>
+		<div class="metrica">
+			<span class="metrica-titulo">VENTAS DE LA SEMANA</span>
+			<span class="metrica-valor">{ formatPrecio(m.SemanaTotal) }</span>
+			<span class="metrica-detalle">{ m.SemanaDetalle }</span>
+			@desglosePago(m.SemanaEfectivo, m.SemanaTransferencia)
+		</div>
+		<div class="metrica">
+			<span class="metrica-titulo">TICKET PROMEDIO</span>
+			<span class="metrica-valor">
+				if m.Ticket != "" {
+					{ formatPrecio(m.Ticket) }
+				} else {
+					—
+				}
+			</span>
+			<span class="metrica-detalle">Por pedido, hoy</span>
+		</div>
+	</section>
+	<section class="grafico" aria-label="Ventas por día">
+		<div>
+			<h2 class="lista-titulo">VENTAS POR DÍA</h2>
+			<p class="grafico-sub">{ m.SemanaTitulo } · no incluye pedidos cancelados</p>
+		</div>
+		<div class="barras">
+			for _, b := range m.Barras {
+				<div class={ "barra-dia", templ.KV("hoy", b.EsHoy) }>
+					if b.Valor != "" {
+						<span class="barra-valor">{ formatPrecio(b.Valor) }</span>
+					} else {
+						<span class="barra-valor">—</span>
+					}
+					// El alto va en una variable CSS (un número de 0 a 100: el % del día que más vendió).
+					<span class="barra-grafico" style={ fmt.Sprintf("--alto: %d", b.Alto) }></span>
+					<span class="barra-dia-nombre">{ b.Dia }</span>
+				</div>
+			}
+		</div>
+		<div class="grafico-total">
+			<span>Total de la semana</span>
+			<strong>{ formatPrecio(m.SemanaTotal) }</strong>
+		</div>
+	</section>
+	</div>
+}
+
+templ desglosePago(efectivo, transferencia string) {
+	<span class="metrica-pagos">Efectivo { formatPrecio(efectivo) } · Transferencia { formatPrecio(transferencia) }</span>
+}
+
+// PedidosPanel son los filtros y la tabla: lo que reemplaza htmx al cambiar un filtro.
+// oob: como en Metricas, para la respuesta de "Cargar pedido".
+templ PedidosPanel(f FiltroPedidos, filas []FilaPedido, oob bool) {
+	<section
+		id="panel-pedidos"
+		class="panel-pedidos"
+		if oob {
+			hx-swap-oob="true"
+		}
+	>
+		<div class="filtro-fecha">
+			<nav class="chips" aria-label="Rango de fechas">
+				for _, c := range f.ChipsRango {
+					@chipPedidos(c)
+				}
+			</nav>
+			<form class="rango" method="get" action="/admin/pedidos" hx-get="/admin/pedidos" hx-target="#panel-pedidos" hx-swap="outerHTML" hx-push-url="true">
+				if f.Estado != "" {
+					<input type="hidden" name="estado" value={ f.Estado }/>
+				}
+				<div class="campo">
+					<label for="desde">Desde</label>
+					<input id="desde" name="desde" type="date" value={ f.Desde } required/>
+				</div>
+				<div class="campo">
+					<label for="hasta">Hasta</label>
+					<input id="hasta" name="hasta" type="date" value={ f.Hasta } required/>
+				</div>
+				<button type="submit" class="boton boton-secundario">FILTRAR</button>
+			</form>
+		</div>
+		<div class="lista-encabezado">
+			<h2 class="lista-titulo">{ f.Titulo }</h2>
+			<nav class="chips" aria-label="Filtrar por estado">
+				for _, c := range f.ChipsEstado {
+					@chipPedidos(c)
+				}
+			</nav>
+		</div>
+		<section class="tabla-contenedor">
+			if len(filas) == 0 {
+				<p class="vacio">No hay pedidos en estas fechas.</p>
+			} else {
+				<table class="tabla tabla-pedidos">
+					<thead>
+						<tr>
+							<th>N°</th>
+							<th>HORA</th>
+							<th>CLIENTE Y PEDIDO</th>
+							<th>ENTREGA</th>
+							<th>PAGO</th>
+							<th>TOTAL</th>
+							<th>ESTADO</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, p := range filas {
+							@filaPedido(p)
+						}
+					</tbody>
+				</table>
+			}
+		</section>
+	</section>
+}
+
+templ chipPedidos(c Chip) {
+	<a
+		class={ "chip", templ.KV("activo", c.Activo) }
+		href={ templ.URL(c.URL) }
+		hx-get={ c.URL }
+		hx-target="#panel-pedidos"
+		hx-swap="outerHTML"
+		hx-push-url="true"
+		if c.Activo {
+			aria-current="true"
+		}
+	>{ c.Label }</a>
+}
+
+templ filaPedido(p FilaPedido) {
+	<tr>
+		<td class="pedido-numero">#{ fmt.Sprint(p.ID) }</td>
+		<td class="pedido-hora">{ p.Hora }</td>
+		<td>
+			<div class="pedido-cliente">{ p.Cliente }</div>
+			<div class="producto-desc">{ p.Resumen }</div>
+		</td>
+		<td>{ p.Entrega }</td>
+		<td>{ p.Pago }</td>
+		<td class="precio">{ formatPrecio(p.Total) }</td>
+		<td>
+			@EtiquetaEstado(p.ID, p.Estado, false)
+		</td>
+		<td>
+			<button
+				class="boton-icono"
+				aria-label={ fmt.Sprintf("Ver el pedido #%d", p.ID) }
+				hx-get={ fmt.Sprintf("/admin/pedidos/%d", p.ID) }
+				hx-target="#modal"
+				hx-swap="innerHTML"
+			>
+				@IconoFlecha()
+			</button>
+		</td>
+	</tr>
+}
+
+// EtiquetaEstado es la pastilla de color del estado. En la lista lleva un id por pedido, así una
+// acción en el detalle la actualiza por OOB sin recargar la tabla.
+templ EtiquetaEstado(id int32, estado string, oob bool) {
+	<span
+		id={ fmt.Sprintf("estado-pedido-%d", id) }
+		class={ "estado", "estado-" + estado }
+		if oob {
+			hx-swap-oob="true"
+		}
+	>{ nombreEstado(estado) }</span>
+}
+
+// etiquetaSinID es la pastilla del estado en la cabecera del detalle (sin id: el id es de la lista).
+templ etiquetaSinID(estado string) {
+	<span class={ "estado", "estado-" + estado }>{ nombreEstado(estado) }</span>
+}
+
+// ModalPedido es el detalle de un pedido, con las acciones de su estado.
+templ ModalPedido(d DetallePedido) {
+	@Modal(OpcionesModal{Titulo: fmt.Sprintf("PEDIDO #%d", d.ID), Subtitulo: d.Subtitulo, Etiqueta: etiquetaSinID(d.Estado)}) {
+		<div class="modal-cuerpo detalle-pedido">
+			if d.Aviso != "" {
+				<p class="error" role="alert">{ d.Aviso }</p>
+			}
+			<dl class="datos-pedido">
+				<div><dt>Cliente</dt><dd>{ d.Cliente }</dd></div>
+				<div><dt>Teléfono</dt><dd>{ textoOMarcador(d.Telefono, "—") }</dd></div>
+				<div><dt>Entrega</dt><dd>{ d.Entrega }</dd></div>
+				<div><dt>Pago</dt><dd>{ d.Pago }</dd></div>
+				if d.Notas != "" {
+					<div class="datos-notas"><dt>Notas</dt><dd>{ d.Notas }</dd></div>
+				}
+			</dl>
+			<div class="lineas-pedido">
+				for _, l := range d.Lineas {
+					<div class="linea"><span>{ l.Texto }</span><span class="precio">{ formatPrecio(l.Total) }</span></div>
+				}
+				if d.Subtotal != "" {
+					<div class="linea linea-cuenta"><span>Subtotal</span><span>{ formatPrecio(d.Subtotal) }</span></div>
+				}
+				if d.Descuento != "" {
+					<div class="linea linea-cuenta"><span>{ d.DescuentoTexto }</span><span>−{ formatPrecio(d.Descuento) }</span></div>
+				}
+				if d.Envio != "" {
+					<div class="linea linea-cuenta"><span>Envío</span><span>{ formatPrecio(d.Envio) }</span></div>
+				}
+				<div class="linea linea-total"><span>Total</span><span>{ formatPrecio(d.Total) }</span></div>
+			</div>
+			<div class="seguimiento">
+				<span class="seguimiento-etiqueta">Link de seguimiento del cliente</span>
+				<span class="seguimiento-link">{ d.Link }</span>
+				<div class="seguimiento-botones">
+					// COPIAR usa static/panel.js (copiar al portapapeles solo se puede con JS).
+					<button type="button" class="boton boton-secundario" data-copiar={ d.Link }>COPIAR</button>
+					if d.WhatsApp != "" {
+						<a class="boton boton-whatsapp" href={ templ.URL(d.WhatsApp) } target="_blank" rel="noopener">MANDAR POR WHATSAPP</a>
+					}
+				</div>
+			</div>
+			<ul class="historial">
+				for _, e := range d.Historial {
+					<li><strong>{ e.Hora }</strong> { e.Texto }</li>
+				}
+			</ul>
+		</div>
+		@pieDetalle(d)
+	}
+}
+
+// pieDetalle son las acciones del estado actual (pedidos.AccionesPara). Confirmar va en un form
+// con la demora; rechazar y cancelar piden confirmación antes.
+templ pieDetalle(d DetallePedido) {
+	if tieneAccion(d.Acciones, pedidos.AccionConfirmar) {
+		<form class="modal-pie pie-detalle" method="post" action={ templ.URL(fmt.Sprintf("/admin/pedidos/%d/%s", d.ID, pedidos.AccionConfirmar)) } hx-post={ fmt.Sprintf("/admin/pedidos/%d/%s", d.ID, pedidos.AccionConfirmar) } hx-target="#modal" hx-swap="innerHTML">
+			<fieldset class="demoras">
+				<legend class="campo-label">Demora estimada (la ve el cliente)</legend>
+				<div class="chips">
+					for i, m := range []int{30, 45, 60} {
+						<label class="chip">
+							<input type="radio" name="demora" value={ fmt.Sprint(m) } checked?={ i == 0 }/>
+							{ fmt.Sprintf("%d min", m) }
+						</label>
+					}
+				</div>
+			</fieldset>
+			<div class="modal-acciones">
+				@botonBaja(d.ID, pedidos.AccionRechazar, "RECHAZAR")
+				<button type="submit" class="boton boton-primario">CONFIRMAR PEDIDO</button>
+			</div>
+		</form>
+	} else if len(d.Acciones) > 0 {
+		<div class="modal-pie">
+			if tieneAccion(d.Acciones, pedidos.AccionCancelar) {
+				<button
+					type="button"
+					class="boton boton-texto"
+					hx-get={ fmt.Sprintf("/admin/pedidos/%d/baja?accion=%s", d.ID, pedidos.AccionCancelar) }
+					hx-target="#modal"
+					hx-swap="innerHTML"
+				>CANCELAR PEDIDO</button>
+			}
+			<div class="modal-acciones">
+				if tieneAccion(d.Acciones, pedidos.AccionEnCamino) {
+					@botonAccion(d.ID, pedidos.AccionEnCamino, "MARCAR EN CAMINO")
+				}
+				if tieneAccion(d.Acciones, pedidos.AccionEntregado) {
+					@botonAccion(d.ID, pedidos.AccionEntregado, "MARCAR ENTREGADO")
+				}
+			</div>
+		</div>
+	}
+}
+
+templ botonAccion(id int32, accion, texto string) {
+	<button
+		type="button"
+		class="boton boton-primario"
+		hx-post={ fmt.Sprintf("/admin/pedidos/%d/%s", id, accion) }
+		hx-target="#modal"
+		hx-swap="innerHTML"
+	>{ texto }</button>
+}
+
+// botonBaja abre la confirmación de rechazar o cancelar (no se hace con un solo clic).
+templ botonBaja(id int32, accion, texto string) {
+	<button
+		type="button"
+		class="boton boton-secundario"
+		hx-get={ fmt.Sprintf("/admin/pedidos/%d/baja?accion=%s", id, accion) }
+		hx-target="#modal"
+		hx-swap="innerHTML"
+	>{ texto }</button>
+}
+
+// ModalConfirmarBaja pregunta antes de rechazar o cancelar. VOLVER regresa al detalle.
+templ ModalConfirmarBaja(id int32, accion string) {
+	@Modal(OpcionesModal{Titulo: tituloBaja(id, accion), Alerta: true, Describe: "texto-baja", Chico: true}) {
+		<div class="modal-cuerpo">
+			<p class="confirmar-texto" id="texto-baja">
+				El pedido pasa a cancelado y el cliente lo ve en el seguimiento. No se puede deshacer.
+			</p>
+		</div>
+		<div class="modal-pie pie-fin">
+			<button
+				type="button"
+				class="boton boton-secundario"
+				hx-get={ fmt.Sprintf("/admin/pedidos/%d", id) }
+				hx-target="#modal"
+				hx-swap="innerHTML"
+			>VOLVER</button>
+			<button
+				type="button"
+				class="boton boton-peligro"
+				hx-post={ fmt.Sprintf("/admin/pedidos/%d/%s", id, accion) }
+				hx-target="#modal"
+				hx-swap="innerHTML"
+			>
+				if accion == pedidos.AccionRechazar {
+					RECHAZAR
+				} else {
+					CANCELAR PEDIDO
+				}
+			</button>
+		</div>
+	}
+}
+
+func tituloBaja(id int32, accion string) string {
+	if accion == pedidos.AccionRechazar {
+		return fmt.Sprintf("¿RECHAZAR EL PEDIDO #%d?", id)
+	}
+	return fmt.Sprintf("¿CANCELAR EL PEDIDO #%d?", id)
+}
+
+func tieneAccion(acciones []string, a string) bool {
+	for _, x := range acciones {
+		if x == a {
+			return true
+		}
+	}
+	return false
+}
+
+// nombreEstado es cómo se lee cada estado en el panel.
+func nombreEstado(estado string) string {
+	switch estado {
+	case pedidos.EstadoPendiente:
+		return "Pendiente"
+	case pedidos.EstadoConfirmado:
+		return "Confirmado"
+	case pedidos.EstadoEnCamino:
+		return "En camino"
+	case pedidos.EstadoEntregado:
+		return "Entregado"
+	case pedidos.EstadoCancelado:
+		return "Cancelado"
+	}
+	return estado
+}

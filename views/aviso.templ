@@ -1,0 +1,93 @@
+package views
+
+import (
+	"context"
+	"fmt"
+	"net/url"
+)
+
+// RutaAvisoPedido es la que el panel consulta cada 10 segundos.
+const RutaAvisoPedido = "/admin/pedidos/aviso"
+
+// AvisoPedido es lo que muestra el aviso de pedido nuevo: el pendiente sin ver más viejo y cuántos
+// hay sin ver. Cantidad 0: no hay nada que avisar.
+type AvisoPedido struct {
+	ID       int32
+	Cliente  string
+	Total    string // como lo da la base: "17000.00"
+	Cantidad int
+}
+
+// Clave dice qué está mostrando el aviso ("17-2": el #17 y hay 2 sin ver). Si el panel ya muestra
+// esa clave, el servidor contesta 204 y htmx no toca nada (así la alarma no se reinicia).
+func (a AvisoPedido) Clave() string {
+	if a.Cantidad == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d-%d", a.ID, a.Cantidad)
+}
+
+type claveAviso struct{}
+
+// ConAviso guarda el aviso en el contexto (lo hace el middleware del panel) para que el layout lo
+// muestre en todas las páginas sin cambiar la firma de cada una.
+func ConAviso(ctx context.Context, a AvisoPedido) context.Context {
+	return context.WithValue(ctx, claveAviso{}, a)
+}
+
+// AvisoDe devuelve el aviso del contexto; ok en false fuera del panel (el login).
+func AvisoDe(ctx context.Context) (a AvisoPedido, ok bool) {
+	a, ok = ctx.Value(claveAviso{}).(AvisoPedido)
+	return a, ok
+}
+
+// tituloPagina: con pedidos sin ver, la pestaña lo dice aunque estén mirando otra.
+func tituloPagina(ctx context.Context, titulo string) string {
+	if a, ok := AvisoDe(ctx); ok && a.Cantidad > 0 {
+		return fmt.Sprintf("(%d) Pedido nuevo · ForestBurger", a.Cantidad)
+	}
+	return titulo + " · ForestBurger"
+}
+
+func urlAviso(a AvisoPedido, titulo string) string {
+	return RutaAvisoPedido + "?" + url.Values{"actual": {a.Clave()}, "titulo": {titulo}}.Encode()
+}
+
+// Aviso es el lugar del aviso arriba del contenido: se consulta solo cada 10 segundos y se
+// reemplaza entero cuando cambia. Como respuesta (de la consulta o por OOB) trae además el
+// <title> de la pestaña, que htmx aplica.
+templ Aviso(a AvisoPedido, titulo string, respuesta, oob bool) {
+	<div
+		id="aviso-pedido"
+		hx-get={ urlAviso(a, titulo) }
+		hx-trigger="every 10s"
+		hx-swap="outerHTML"
+		if oob {
+			hx-swap-oob="true"
+		}
+	>
+		if respuesta {
+			<title>{ tituloPagina(ConAviso(ctx, a), titulo) }</title>
+		}
+		if a.Cantidad > 0 {
+			<div class="aviso-pedido" role="alert">
+				<span class="aviso-campana">
+					@IconoCampana()
+				</span>
+				<div class="aviso-textos">
+					<strong>
+						Nuevo pedido #{ fmt.Sprint(a.ID) } · { a.Cliente } · { formatPrecio(a.Total) }
+						if a.Cantidad > 1 {
+							<span class="aviso-mas">y { fmt.Sprint(a.Cantidad - 1) } más</span>
+						}
+					</strong>
+					<span>Suena una alarma hasta que alguien lo abre.</span>
+				</div>
+				<a class="boton aviso-ver" href={ templ.URL(fmt.Sprintf("/admin/pedidos/%d", a.ID)) }>VER</a>
+				// Suena mientras el aviso está y se corta cuando se va. El navegador lo deja sonar
+				// solo si ya tocaron algo en la página (ver el README).
+				<audio src="/static/alarma.wav" autoplay loop></audio>
+			</div>
+		}
+	</div>
+}

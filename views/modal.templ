@@ -14,6 +14,9 @@ type OpcionesModal struct {
 	Describe string
 	Chico    bool // el más angosto, para confirmaciones
 	Mediano  bool // para formularios cortos, como el de extras
+	Ancho    bool // a dos columnas, como "Cargar pedido"
+	// Etiqueta va en la cabecera, al lado de la ✕ (por ejemplo, el estado de un pedido).
+	Etiqueta templ.Component
 }
 
 // Modal es el marco de todos los modales: el fondo, el cuadro y la cabecera con el título y la ✕.
@@ -28,7 +31,7 @@ templ Modal(o OpcionesModal) {
 		hx-trigger="click target:.modal-fondo, keyup[key=='Escape'] from:body"
 	>
 		<div
-			class={ "modal", templ.KV("chico", o.Chico), templ.KV("mediano", o.Mediano) }
+			class={ "modal", templ.KV("chico", o.Chico), templ.KV("mediano", o.Mediano), templ.KV("ancho", o.Ancho) }
 			if o.Alerta {
 				role="alertdialog"
 			} else {
@@ -47,13 +50,29 @@ templ Modal(o OpcionesModal) {
 						<p class="modal-sub">{ o.Subtitulo }</p>
 					}
 				</div>
-				<button type="button" class="cerrar" aria-label="Cerrar" hx-get={ RutaCerrarModal } hx-target="#modal">
-					@IconoCerrar()
-				</button>
+				<div class="modal-cabecera-derecha">
+					if o.Etiqueta != nil {
+						@o.Etiqueta
+					}
+					<button type="button" class="cerrar" aria-label="Cerrar" hx-get={ RutaCerrarModal } hx-target="#modal">
+						@IconoCerrar()
+					</button>
+				</div>
 			</div>
 			{ children... }
 		</div>
 	</div>
+}
+
+// AvisoPedidosEnCurso se suma a la confirmación de borrado cuando lo que se borra está en pedidos
+// pendientes o confirmados: se puede borrar igual, porque cada pedido guarda su propia copia.
+templ AvisoPedidosEnCurso(enCurso int64) {
+	if enCurso > 0 {
+		<p class="aviso-en-curso">
+			Está en { conteo(int(enCurso), "pedido en curso", "pedidos en curso") }: se siguen
+			mostrando igual, porque el pedido guarda su copia.
+		</p>
+	}
 }
 
 // BotonCancelarModal es el CANCELAR del pie: cierra el modal sin guardar nada.

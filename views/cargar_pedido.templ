@@ -1,0 +1,292 @@
+package views
+
+import "fmt"
+
+// "Cargar pedido": el modal para cargar a mano los pedidos que entran por WhatsApp, por teléfono
+// o en el local. Todo el modal es un solo form: el pedido que se va armando viaja en inputs
+// ocultos, y cada botón (sumar, restar, un extra, un tamaño) lo manda entero a
+// /admin/pedidos/cargar/armar, que devuelve el modal recalculado. Las cuentas las hace siempre el
+// servidor con los precios de la base; acá solo se dibuja lo que manda.
+
+const (
+	rutaArmarPedido   = "/admin/pedidos/cargar/armar"
+	rutaGuardarPedido = "/admin/pedidos/cargar"
+)
+
+// CargaPedido es todo lo que muestra el modal, ya armado por el handler.
+type CargaPedido struct {
+	Cliente, Telefono, Direccion string
+	Origen, Entrega, Pago        string
+	DescTipo, DescValor, Motivo  string // DescTipo: "", "pct" o "fijo"
+	Categoria                    string // la que se ve a la izquierda
+	Categorias                   []CategoriaCarga
+	Productos                    []ProductoCarga // los de la categoría elegida
+	Items                        []ItemCarga
+	Subtotal, Descuento, Envio   string // montos como "24500.00"; vacío si no aplican
+	DescuentoTexto               string // "Descuento 20% (amigos)"
+	Total                        string
+	Error                        string
+}
+
+type CategoriaCarga struct {
+	Valor, Label string
+}
+
+// ProductoCarga es un producto de la lista de la izquierda. Doble vacío: no tiene doble.
+type ProductoCarga struct {
+	ID             int32
+	Nombre         string
+	Simple, Doble  string
+}
+
+// ItemCarga es un renglón del pedido. Los campos de arriba viajan ocultos en el form.
+type ItemCarga struct {
+	ProductoID int32
+	Tamano     string
+	Cantidad   int
+	ExtrasIDs  string // "1,3"
+	Nombre     string // "Classic (doble)"
+	Detalle    string // "+ cheddar · $17.500 c/u"
+	Total      string
+	Extras     []ExtraCarga // vacío para bebidas y acompañamientos
+}
+
+// ExtraCarga es un chip de extra de un renglón: prendido o apagado.
+type ExtraCarga struct {
+	ID            int32
+	Nombre, Precio string
+	Activo        bool
+}
+
+templ ModalCargarPedido(c CargaPedido) {
+	@Modal(OpcionesModal{Titulo: "CARGAR PEDIDO", Subtitulo: "Para pedidos por WhatsApp, por teléfono o de gente en el local. Entra como confirmado.", Ancho: true}) {
+		<form id="form-carga" method="post" action={ templ.URL(rutaGuardarPedido) } hx-post={ rutaGuardarPedido } hx-target="#modal" hx-swap="innerHTML">
+			<button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>
+			<input type="hidden" name="categoria" value={ c.Categoria }/>
+			for i, it := range c.Items {
+				<input type="hidden" name={ fmt.Sprintf("item_%d_producto", i) } value={ fmt.Sprint(it.ProductoID) }/>
+				<input type="hidden" name={ fmt.Sprintf("item_%d_tamano", i) } value={ it.Tamano }/>
+				<input type="hidden" name={ fmt.Sprintf("item_%d_cantidad", i) } value={ fmt.Sprint(it.Cantidad) }/>
+				<input type="hidden" name={ fmt.Sprintf("item_%d_extras", i) } value={ it.ExtrasIDs }/>
+			}
+			<div class="carga">
+				<div class="carga-productos">
+					<h3 class="carga-titulo">PRODUCTOS</h3>
+					<div class="chips">
+						for _, cat := range c.Categorias {
+							@botonArmar(fmt.Sprintf(`{"accion":"categoria","ver":%q}`, cat.Valor), "chip", cat.Valor == c.Categoria) {
+								{ cat.Label }
+							}
+						}
+					</div>
+					<div class="carga-lista">
+						for _, p := range c.Productos {
+							<div class="carga-producto">
+								<span class="producto-nombre">{ p.Nombre }</span>
+								<div class="carga-tamanos">
+									if p.Doble != "" {
+										@botonArmar(fmt.Sprintf(`{"accion":"agregar","producto":"%d","tamano":"simple"}`, p.ID), "boton-tamano", false) {
+											<span>Simple</span><strong>{ formatPrecio(p.Simple) }</strong>
+										}
+										@botonArmar(fmt.Sprintf(`{"accion":"agregar","producto":"%d","tamano":"doble"}`, p.ID), "boton-tamano", false) {
+											<span>Doble</span><strong>{ formatPrecio(p.Doble) }</strong>
+										}
+									} else {
+										@botonArmar(fmt.Sprintf(`{"accion":"agregar","producto":"%d","tamano":"simple"}`, p.ID), "boton-tamano", false) {
+											<span>Agregar</span><strong>{ formatPrecio(p.Simple) }</strong>
+										}
+									}
+								</div>
+							</div>
+						}
+						if len(c.Productos) == 0 {
+							<p class="vacio">No hay productos en esta categoría.</p>
+						}
+					</div>
+					<p class="ayuda ayuda-suelta">Tocá el tamaño para sumarlo al pedido. Los extras se eligen en cada hamburguesa, a la derecha.</p>
+				</div>
+				<div class="carga-pedido">
+					if c.Error != "" {
+						<p class="error" role="alert">{ c.Error }</p>
+					}
+					<h3 class="carga-titulo">CLIENTE</h3>
+					<div class="campos-fila">
+						<div class="campo">
+							<label for="carga-cliente">Nombre</label>
+							<input id="carga-cliente" name="cliente" type="text" value={ c.Cliente } maxlength="100"/>
+						</div>
+						<div class="campo">
+							<label for="carga-telefono">Teléfono (opcional)</label>
+							<input id="carga-telefono" name="telefono" type="tel" inputmode="tel" value={ c.Telefono } maxlength="20"/>
+						</div>
+					</div>
+					@chipsRadio("Vino por", "origen", c.Origen, []CategoriaCarga{{"whatsapp", "WhatsApp"}, {"local", "En el local"}, {"telefono", "Teléfono"}}, false)
+					// Entrega y pago recalculan (el delivery suma el envío y muestra la dirección).
+					<div class="campos-fila">
+						@chipsRadio("Entrega", "entrega", c.Entrega, []CategoriaCarga{{"retiro", "Retiro"}, {"delivery", "Delivery"}}, true)
+						@chipsRadio("Pago", "pago", c.Pago, []CategoriaCarga{{"efectivo", "Efectivo"}, {"transferencia", "Transferencia"}}, false)
+					</div>
+					if c.Entrega == "delivery" {
+						<div class="campo">
+							<label for="carga-direccion">Dirección</label>
+							<input id="carga-direccion" name="direccion" type="text" value={ c.Direccion } maxlength="200"/>
+						</div>
+					}
+					<h3 class="carga-titulo">PEDIDO</h3>
+					if len(c.Items) == 0 {
+						<p class="vacio">Todavía no hay productos. Elegilos a la izquierda.</p>
+					}
+					for i, it := range c.Items {
+						<div class="carga-item">
+							<div class="carga-item-fila">
+								<div>
+									<span class="carga-item-nombre">{ it.Nombre }</span>
+									<span class="carga-item-detalle">{ it.Detalle }</span>
+								</div>
+								<div class="carga-item-cantidad">
+									<div class="stepper">
+										@botonArmar(fmt.Sprintf(`{"accion":"menos","i":"%d"}`, i), "stepper-boton", false) {
+											<span aria-hidden="true">−</span><span class="solo-lectores">Uno menos de { it.Nombre }</span>
+										}
+										<span class="stepper-numero">{ fmt.Sprint(it.Cantidad) }</span>
+										@botonArmar(fmt.Sprintf(`{"accion":"mas","i":"%d"}`, i), "stepper-boton mas", false) {
+											<span aria-hidden="true">+</span><span class="solo-lectores">Uno más de { it.Nombre }</span>
+										}
+									</div>
+									<strong class="carga-item-total">{ formatPrecio(it.Total) }</strong>
+								</div>
+							</div>
+							if len(it.Extras) > 0 {
+								<div class="chips">
+									for _, e := range it.Extras {
+										@botonArmar(fmt.Sprintf(`{"accion":"extra","i":"%d","extra":"%d"}`, i, e.ID), "chip", e.Activo) {
+											{ e.Nombre } +{ formatPrecio(e.Precio) }
+										}
+									}
+								</div>
+							}
+						</div>
+					}
+					<div class="carga-descuento">
+						<span class="campo-label">Descuento</span>
+						<div class="chips">
+							<div class="contenidos" hx-post={ rutaArmarPedido } hx-trigger="change" hx-target="#form-carga" hx-select="#form-carga" hx-swap="outerHTML">
+								@radioChip("desc_tipo", "", "Sin descuento", c.DescTipo == "")
+								@radioChip("desc_tipo", "pct", "%", c.DescTipo == "pct")
+								@radioChip("desc_tipo", "fijo", "$", c.DescTipo == "fijo")
+							</div>
+							if c.DescTipo != "" {
+								<input class="input-fila desc-valor" name="desc_valor" type="number" inputmode="decimal" min="0" step="1" value={ c.DescValor } aria-label="Valor del descuento" { recalculaCuentas... }/>
+							}
+						</div>
+						if c.DescTipo != "" {
+							<div class="campo">
+								<label for="carga-motivo">Motivo (opcional)</label>
+								<input id="carga-motivo" name="motivo" type="text" value={ c.Motivo } maxlength="60" { recalculaCuentas... }/>
+							</div>
+						}
+					</div>
+					<div id="carga-cuentas" class="carga-cuentas">
+						<div class="linea-cuenta"><span>Subtotal</span><strong>{ formatPrecio(c.Subtotal) }</strong></div>
+						if c.Descuento != "" {
+							<div class="linea-cuenta descuento"><span>{ c.DescuentoTexto }</span><strong>−{ formatPrecio(c.Descuento) }</strong></div>
+						}
+						if c.Envio != "" {
+							<div class="linea-cuenta"><span>Envío</span><strong>{ formatPrecio(c.Envio) }</strong></div>
+						}
+						<div class="carga-total"><span>TOTAL</span><span>{ formatPrecio(c.Total) }</span></div>
+					</div>
+				</div>
+			</div>
+			<div class="modal-pie">
+				<button type="button" class="boton boton-texto" hx-get={ rutaGuardarPedido } hx-target="#form-carga" hx-select="#form-carga" hx-swap="outerHTML">LIMPIAR</button>
+				<div class="modal-acciones">
+					@BotonCancelarModal()
+					<button id="boton-guardar" type="submit" class="boton boton-primario" disabled?={ len(c.Items) == 0 }>GUARDAR PEDIDO · { formatPrecio(c.Total) }</button>
+				</div>
+			</div>
+		</form>
+	}
+}
+
+// recalculaCuentas: mientras se escribe (400 ms después de la última tecla) pide el modal
+// recalculado pero solo cambia las cuentas y el botón de guardar; el campo no se toca.
+var recalculaCuentas = templ.Attributes{
+	"hx-post":       rutaArmarPedido,
+	"hx-trigger":    "input changed delay:400ms",
+	"hx-target":     "#carga-cuentas",
+	"hx-select":     "#carga-cuentas",
+	"hx-select-oob": "#boton-guardar",
+	"hx-swap":       "outerHTML",
+}
+
+// botonArmar manda el form entero con una acción del carrito y vuelve el modal recalculado.
+templ botonArmar(vals, clase string, activo bool) {
+	<button
+		type="button"
+		class={ clase, templ.KV("activo", activo) }
+		hx-post={ rutaArmarPedido }
+		hx-vals={ vals }
+		hx-target="#form-carga"
+		hx-select="#form-carga"
+		hx-swap="outerHTML"
+		if activo {
+			aria-pressed="true"
+		}
+	>
+		{ children... }
+	</button>
+}
+
+// chipsRadio es un grupo de opciones como chips (como la categoría del alta de producto). Con
+// recalcula, un cambio pide el modal recalculado.
+templ chipsRadio(titulo, nombre, valor string, opciones []CategoriaCarga, recalcula bool) {
+	<fieldset
+		class="campo"
+		if recalcula {
+			hx-post={ rutaArmarPedido }
+			hx-trigger="change"
+			hx-target="#form-carga"
+			hx-select="#form-carga"
+			hx-swap="outerHTML"
+		}
+	>
+		<legend class="campo-label">{ titulo }</legend>
+		<div class="chips">
+			for _, o := range opciones {
+				@radioChip(nombre, o.Valor, o.Label, o.Valor == valor)
+			}
+		</div>
+	</fieldset>
+}
+
+templ radioChip(nombre, valor, label string, marcado bool) {
+	<label class="chip">
+		<input type="radio" name={ nombre } value={ valor } checked?={ marcado }/>
+		{ label }
+	</label>
+}
+
+// ModalPedidoCargado es lo que queda después de guardar: el link para pasarle al cliente.
+templ ModalPedidoCargado(id int32, link, whatsapp string) {
+	@Modal(OpcionesModal{Titulo: fmt.Sprintf("PEDIDO #%d CARGADO", id), Subtitulo: "Ya está confirmado. Pasale el link al cliente para que siga el pedido.", Mediano: true}) {
+		<div class="modal-cuerpo">
+			<div class="seguimiento">
+				<span class="seguimiento-etiqueta">Link de seguimiento</span>
+				<span class="seguimiento-link">{ link }</span>
+			</div>
+			if whatsapp != "" {
+				<p class="ayuda ayuda-suelta">“Mandar por WhatsApp” abre el chat con el número que cargaste y el link ya escrito.</p>
+			}
+		</div>
+		<div class="modal-pie">
+			<button type="button" class="boton boton-texto" hx-get={ RutaCerrarModal } hx-target="#modal">LISTO</button>
+			<div class="modal-acciones">
+				<button type="button" class="boton boton-secundario" data-copiar={ link }>COPIAR</button>
+				if whatsapp != "" {
+					<a class="boton boton-whatsapp" href={ templ.URL(whatsapp) } target="_blank" rel="noopener">MANDAR POR WHATSAPP</a>
+				}
+			</div>
+		</div>
+	}
+}

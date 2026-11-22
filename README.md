@@ -66,18 +66,35 @@ propios, sobre la capa de persistencia generada con **sqlc** y PostgreSQL.
 
 3. Otros comandos disponibles en el `Makefile`:
 
+   - **Desarrollar con la base que guarda los datos:**
+     ```bash
+     make run
+     ```
+     A diferencia de `make run-app`, **no borra la base**: la levanta si no está, le aplica el
+     schema (es seguro: todo es `IF NOT EXISTS`, así aparecen las tablas nuevas sin perder nada)
+     y arranca. Los productos, extras, ajustes y pedidos quedan entre corridas.
    - **Ejecutar la suite de tests automatizados (`go test`):**
      ```bash
      make test
      ```
+     Usa su propia base, `forestburger_test` (en el mismo contenedor), que se recrea en cada
+     corrida: **nunca toca los datos de desarrollo**.
    - **Ejecutar las pruebas de endpoints con `curl`:**
      ```bash
      make test-api
      ```
-   - **Limpiar contenedores y volúmenes manualmente:**
+   - **Borrar todo y empezar de cero** (la base, los datos y las fotos):
      ```bash
      make clean
      ```
+
+   | Comando | La base de desarrollo |
+   |---|---|
+   | `make run` | la conserva |
+   | `make run-app` | la borra al empezar y al terminar (el flujo del TP) |
+   | `make test` | no la toca (usa `forestburger_test`) |
+   | `make crear-admin` | la conserva |
+   | `make clean` | la borra, con las fotos |
 
 ## Rutas de la aplicación
 
@@ -115,6 +132,14 @@ login. La raíz `/` por ahora redirige al panel; más adelante va a ser el menú
 | `GET /admin/ajustes/cambios`       | Aviso "Tenés cambios sin guardar · DESCARTAR" (lo pide htmx con el primer cambio) |
 | `PUT /admin/local/abierto`         | El switch "Local abierto" de la barra lateral: guarda apenas se toca     |
 | `POST /admin/productos/foto-previa` | Valida la foto elegida y devuelve su vista previa (o el error). No guarda nada |
+| `GET /admin/pedidos`               | Sección Pedidos: `?rango=hoy\|ayer\|semana\|mes` o `?desde=…&hasta=…`, y `?estado=…`; con htmx solo el panel |
+| `GET /admin/pedidos/{id}`          | Detalle de un pedido (modal); lo marca visto                             |
+| `GET /admin/pedidos/{id}/baja`     | Confirmación de `?accion=rechazar\|cancelar`                            |
+| `POST /admin/pedidos/{id}/{accion}`| `confirmar` (con `demora`), `rechazar`, `en-camino`, `entregado`, `cancelar`; devuelve el detalle y la etiqueta de la lista (OOB) |
+| `GET /admin/pedidos/aviso`         | Aviso de pedido nuevo (lo consulta el panel cada 10 s con `?actual=`): 204 si no cambió, si no el aviso nuevo |
+| `GET /admin/pedidos/cargar`        | Modal "Cargar pedido" vacío (sin htmx, la página de Pedidos con el modal abierto) |
+| `POST /admin/pedidos/cargar/armar` | Recalcula el modal después de cada clic (agregar, + / −, extra, categoría, entrega, descuento). No guarda nada |
+| `POST /admin/pedidos/cargar`       | Guarda el pedido confirmado; devuelve "PEDIDO #N CARGADO" y la lista y las métricas (OOB). Con error, el modal con el mensaje |
 | `GET /uploads/<archivo>`           | Sirve las fotos de los productos (público: las va a usar el menú). No lista la carpeta |
 | `DELETE /admin/productos/{id}`     | Borra el producto. Con htmx devuelve el panel con el mismo filtro (`?categoria=`) y cierra el modal (OOB); sin htmx, 303 a `/admin` |
 
@@ -231,14 +256,128 @@ nunca se guarda ni se muestra).
   No crea otro admin: le cambia la contraseña.
 - **La base:** `make crear-admin` levanta Postgres si no está corriendo, pero **sin borrarlo**, y
   crea la tabla `admin` si todavía no existe. Si tenés `make run` en otra terminal, usa esa misma
-  base. Ojo: `make run`, `make run-app` y `make test` arrancan con la base vacía, así que después
-  de correrlos hay que volver a crear los admins (o usar el admin de desarrollo, abajo).
+  base. `make run` conserva la base (y los admins); `make run-app` y `make clean` la borran, y
+  después hay que volver a crear los admins (o usar el admin de desarrollo, abajo).
 - **Admin de desarrollo:** para no correr `make crear-admin` después de cada `make run`, en el
   `.env` de tu máquina podés poner `DEV_ADMIN_EMAIL` y `DEV_ADMIN_PASSWORD`. Si están las dos, al
   arrancar la app crea (o actualiza) ese admin y avisa "Admin de desarrollo listo: <email>" (la
   contraseña nunca se muestra). El mail tiene que estar en `ADMIN_EMAILS` y la contraseña tener al
   menos 8 caracteres; si no, avisa el motivo y arranca igual. **Son solo para desarrollo: en
   producción no se ponen**, y sin ellas no hace nada.
+
+## Pedidos (modelo de datos)
+
+Los pedidos llegan de la web o se cargan en el panel (próximas fases). Las tablas:
+
+- **`pedido`:** el cliente, de dónde vino (web, WhatsApp, teléfono o local), la entrega (retiro o
+  delivery con dirección), el pago (efectivo o transferencia), el estado (pendiente, confirmado,
+  entregado o cancelado), la demora avisada, las cuentas (subtotal, descuento en % con su motivo,
+  envío y total) y el `token` del link de seguimiento.
+- **`item_pedido`** e **`item_pedido_extra`:** lo que se pidió. Guardan **una copia del nombre y
+  del precio** del momento: si después cambia o se borra un producto o un extra, el pedido (en
+  curso o viejo) se sigue viendo igual (la referencia queda en `NULL`). Por eso se puede borrar
+  un producto que está en pedidos; el modal de borrado avisa si está en pedidos en curso.
+- Los extras van **por cada unidad**: "2x Classic + cheddar" son dos Classic, cada una con
+  cheddar. Una línea cuesta `cantidad × (precio + extras)`.
+- **`pedido_evento`:** el historial ("21:05 Recibido", "21:07 Confirmado · 30 min").
+
+Los pedidos se crean con `pedidos.Crear` (paquete `pedidos/`), que toma los precios de la base y
+hace las cuentas en el servidor (en centavos, para no perder ni uno por redondeo): quien crea el
+pedido solo manda qué productos y extras, y cuántos.
+
+### Atender pedidos (`/admin/pedidos`)
+
+- **Arriba, las ventas** de hoy y de esta semana (lunes a domingo), siempre, sin importar el
+  filtro de la lista: ventas de hoy (con el % contra ayer), ventas de la semana y ticket
+  promedio, cada una con cuánto entró en **efectivo** y cuánto por **transferencia**. Debajo, el
+  gráfico "Ventas por día" de la semana (barras hechas con CSS, sin librerías). No cuentan los
+  pedidos cancelados. Sale de una sola consulta (`VentasPorDia`) y las cuentas las hace
+  `pedidos.Metricas`.
+- **La lista** se filtra por fecha (Hoy, Ayer, Esta semana de lunes a domingo, Este mes, o un
+  rango Desde/Hasta) y por estado. Todo va en la URL, como los filtros de Productos. Cada fila
+  muestra el resumen ("2x Cheese Bacon (doble) + cheddar, 1x Gaseosa lata") y la etiqueta de
+  color del estado. Las fechas se cuentan con la hora de la Argentina.
+- **El detalle** (la flecha ">") muestra los datos, las líneas con sus cuentas, el link de
+  seguimiento del cliente y el historial. Con las acciones de cada estado:
+
+  | Estado | Acciones |
+  |---|---|
+  | pendiente | elegir la demora (30, 45 o 60 min, la ve el cliente) y CONFIRMAR, o RECHAZAR |
+  | confirmado | delivery: MARCAR EN CAMINO; retiro: MARCAR ENTREGADO; CANCELAR PEDIDO |
+  | en camino | MARCAR ENTREGADO; CANCELAR PEDIDO |
+
+  Rechazar y cancelar piden confirmación. Si dos personas tocan el mismo pedido a la vez, la
+  segunda ve "Este pedido ya cambió de estado" con el estado real (el cambio va condicionado al
+  estado que se leyó). Cada cambio queda en el historial.
+- **El link de seguimiento** se puede **copiar** (COPIAR) o **mandar por WhatsApp** (un link
+  `wa.me` con el mensaje ya escrito). La página que abre ese link es de una etapa posterior.
+- **COPIAR es el único JavaScript del panel** (`static/panel.js`): copiar al portapapeles no se
+  puede hacer de otra forma. Todo lo demás es htmx.
+- Pendiente para más adelante: IMPRIMIR COMANDA.
+
+### Aviso de pedido nuevo
+
+Cuando hay un pedido **pendiente que nadie abrió**, arriba de todas las pantallas del panel (no
+solo en Pedidos) aparece el banner amarillo "Nuevo pedido #17 · Martina · $17.000" (y "y 2 más"
+si hay varios), suena una alarma y la pestaña dice "(3) Pedido nuevo".
+
+- **Sin JS propio:** el lugar del aviso se consulta solo cada 10 segundos (`hx-trigger="every
+  10s"`) y le dice al servidor qué está mostrando (`?actual=17-3`). Si no cambió nada, el
+  servidor contesta **204** y htmx no toca la página, así la alarma no se corta ni vuelve a
+  empezar. Si cambió, manda el aviso nuevo.
+- **VER** es un link común al pedido. Al abrir el detalle (desde ahí o desde la lista) queda
+  visto, y como mucho 10 segundos después el aviso se va de todas las pantallas abiertas.
+- Cuentan solo los **pendientes sin abrir**. Los que se cargan a mano ya entran confirmados, y un
+  pedido rechazado sin abrir deja de avisar.
+- **La alarma** es `static/alarma.wav` (un "din-don" de 1 s, hecho con el módulo `wave` de
+  Python), con `<audio autoplay loop>` dentro del banner.
+
+**Para que la alarma suene siempre**, en la compu del local hay que darle permiso de
+reproducción automática al sitio **una sola vez**. Los navegadores no dejan que una página haga
+ruido hasta que la persona tocó algo en ella:
+
+| Navegador | Cómo |
+|---|---|
+| Firefox | Candado de la barra de direcciones → "Reproducción automática" → **Permitir audio y video** |
+| Edge | Candado → Permisos de este sitio → "Reproducción automática de medios" → **Permitir** |
+| Chrome | No tiene ese permiso por sitio: conviene usar Firefox o Edge en la compu del local |
+
+Sin ese permiso suena igual en la mayoría de los casos: después de cualquier clic en el panel
+(por ejemplo, pasar de una sección a otra), cuando llega un pedido nuevo. Lo que no suena es
+**recargar la página con el aviso ya puesto y no tocar nada**: el banner se ve y la pestaña
+avisa, pero sin sonido hasta que llegue otro pedido o se cambie de sección.
+
+### Cargar pedido (`+ CARGAR PEDIDO`)
+
+Para los pedidos que entran por WhatsApp, por teléfono o en el mostrador. El pedido entra
+**confirmado** (con el historial "Recibido" y "Confirmado").
+
+- **A la izquierda**, los productos por categoría, con un botón por tamaño ("Simple $14.500",
+  "Doble $16.500"). **A la derecha**, el cliente (nombre, teléfono opcional, por dónde vino), la
+  entrega (la dirección solo aparece con delivery), el pago, el pedido armado y las cuentas.
+- **Sin JavaScript propio:** todo el modal es un solo form, y el pedido que se va armando viaja
+  en inputs ocultos (`item_0_producto`, `item_0_tamano`, `item_0_cantidad`, `item_0_extras`).
+  Cada botón manda el form entero con su acción a `/admin/pedidos/cargar/armar` y htmx reemplaza
+  el modal por el recalculado. El servidor no guarda nada entre clics y lo que ya se escribió
+  (nombre, dirección, motivo) no se pierde.
+- **Reglas:** tocar un tamaño que ya está (sin extras) suma uno a ese renglón; el "−" en 1 lo
+  saca. Los extras disponibles se prenden y apagan en cada hamburguesa o veggie, y van por
+  unidad.
+- **Descuento** en % (redondeado al peso) o en $ fijo (nunca más que el subtotal), con un motivo
+  opcional. Se aplica sobre el subtotal, no sobre el envío.
+- **Las cuentas las hace siempre el servidor** con los precios de la base:
+  `pedidos.CalcularPresupuesto` para lo que se ve mientras se arma y `pedidos.Crear` para guardar
+  usan el mismo código, así que el total que se ve es el que se guarda.
+- Al guardar aparece **"PEDIDO #N CARGADO"** con el link de seguimiento, COPIAR y MANDAR POR
+  WHATSAPP (si se cargó el teléfono). La lista y las métricas de atrás se actualizan solas.
+
+### Datos de prueba
+
+Con `DEV_DATOS_PRUEBA=1` en el `.env`, al arrancar con la base sin productos se cargan solos:
+9 productos, 4 extras, ajustes de ejemplo y unos 50 pedidos de los últimos 10 días (con estados,
+pagos y entregas variados, para ver el panel de pedidos). Se cargan **una sola vez**: como
+`make run` conserva la base, las corridas siguientes no tocan nada. Para empezar de cero,
+`make clean`. **Solo para desarrollo:** en producción no se pone y la base es otra.
 
 ## Login
 
@@ -270,9 +409,9 @@ Variables del `.env` (el Makefile se las pasa a la app):
 
 ## Notas
 
-- La aplicación no utiliza archivos `.js` locales.
-- `make test` ejecuta los paquetes de a uno (`go test -p 1`) porque los tests de `handlers`
-  y de `db` comparten la misma base de datos.
+- El único archivo `.js` local es `static/panel.js` (el botón COPIAR del detalle de un pedido); todo lo demás es htmx.
+- `make test` ejecuta los paquetes de a uno (`go test -p 1`) porque los tests de `handlers`,
+  `db`, `pedidos` y `seed` comparten la base de test (`forestburger_test`).
 - Asegurarse de tener `$(go env GOPATH)/bin` en la variable de entorno `PATH`
   para que `make` pueda invocar tanto `sqlc` como `templ`.
 - Si los puertos `5432` (PostgreSQL) u `8080` (Servidor Web) están ocupados en

@@ -268,8 +268,13 @@ func (a *API) ConfirmarBorrado(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	enCurso, err := a.q.CountPedidosEnCursoConProducto(r.Context(), sql.NullInt32{Int32: p.ID, Valid: true})
+	if err != nil {
+		http.Error(w, "No se pudo revisar los pedidos", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	views.ModalConfirmarBorrado(p, categoriaActual(r)).Render(r.Context(), w)
+	views.ModalConfirmarBorrado(p, categoriaActual(r), enCurso).Render(r.Context(), w)
 }
 
 // BorrarProducto: DELETE /admin/productos/{id}?categoria=<filtro>

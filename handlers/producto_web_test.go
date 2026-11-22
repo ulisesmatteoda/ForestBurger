@@ -17,6 +17,7 @@ import (
 
 	"forestburger/auth"
 	sqlc "forestburger/db/sqlc"
+	"forestburger/internal/basetest"
 )
 
 // ---------- unitarios (no necesitan base) ----------
@@ -95,22 +96,7 @@ func setupSinSesion(t *testing.T) (*http.ServeMux, *sqlc.Queries) {
 // fotos (una temporal por test, así no se ensucia uploads/).
 func setupAPI(t *testing.T) (*http.ServeMux, *sqlc.Queries, *API) {
 	t.Helper()
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = "postgres://usuario:password@localhost:5432/forestburger?sslmode=disable"
-	}
-	conn, err := sql.Open("postgres", dsn)
-	if err != nil {
-		t.Fatalf("no se pudo abrir la base: %v", err)
-	}
-	t.Cleanup(func() { conn.Close() })
-	if err := conn.Ping(); err != nil {
-		t.Fatalf("no se pudo conectar a la base: %v", err)
-	}
-	// Ajustá el nombre de la tabla si es distinto.
-	if _, err := conn.Exec(`TRUNCATE producto, admin, extra RESTART IDENTITY CASCADE`); err != nil {
-		t.Fatalf("no se pudieron limpiar las tablas: %v", err)
-	}
+	conn := basetest.Abrir(t)
 
 	t.Setenv("SESSION_SECRET", secretoTest)
 	t.Setenv("COOKIE_SECURE", "")

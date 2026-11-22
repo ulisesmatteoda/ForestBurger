@@ -109,8 +109,13 @@ func (a *API) ConfirmarBorrarExtra(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	enCurso, err := a.q.CountPedidosEnCursoConExtra(r.Context(), sql.NullInt32{Int32: e.ID, Valid: true})
+	if err != nil {
+		http.Error(w, "No se pudo revisar los pedidos", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	views.ModalConfirmarBorradoExtra(e).Render(r.Context(), w)
+	views.ModalConfirmarBorradoExtra(e, enCurso).Render(r.Context(), w)
 }
 
 // BorrarExtra: DELETE /admin/extras/{id}

@@ -6,6 +6,7 @@ sql:
       - "db/queries/admin.sql"
       - "db/queries/extra.sql"
       - "db/queries/ajustes.sql"
+      - "db/queries/pedidos.sql"
     schema: "db/schema.sql"    
     gen:
       go:

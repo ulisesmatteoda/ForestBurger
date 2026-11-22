@@ -6,6 +6,9 @@ import "forestburger/auth"
 // de styles.css: si el archivo cambia, cambia la URL y el navegador no puede usar una copia vieja.
 var VersionEstilos string
 
+// VersionPanelJS es lo mismo para static/panel.js.
+var VersionPanelJS string
+
 // Documento es el HTML base (head con htmx, fuentes y estilos) que comparten el panel y el login.
 templ Documento(titulo string) {
 	<!DOCTYPE html>
@@ -13,7 +16,7 @@ templ Documento(titulo string) {
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>{ titulo } · ForestBurger</title>
+			<title>{ tituloPagina(ctx, titulo) }</title>
 			<script src="https://unpkg.com/htmx.org@1.9.10"></script>
 			<link rel="preconnect" href="https://fonts.googleapis.com"/>
 			<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Semi+Condensed:wght@700;800&display=swap" rel="stylesheet"/>
@@ -42,7 +45,7 @@ type seccionPanel struct {
 var seccionesPanel = []seccionPanel{
 	{SeccionProductos, "Productos", "/admin", true},
 	{SeccionExtras, "Extras", "/admin/extras", true},
-	{SeccionPedidos, "Pedidos", "/admin/pedidos", false},
+	{SeccionPedidos, "Pedidos", "/admin/pedidos", true},
 	{SeccionAjustes, "Ajustes", "/admin/ajustes", true},
 }
 
@@ -86,9 +89,14 @@ templ Layout(titulo, seccion string) {
 				}
 			</aside>
 			<main class="contenido">
+				if aviso, ok := AvisoDe(ctx); ok {
+					@Aviso(aviso, titulo, false, false)
+				}
 				{ children... }
 			</main>
 		</div>
+		// Lo que htmx no puede hacer (copiar al portapapeles). Solo en el panel.
+		<script src={ "/static/panel.js?v=" + VersionPanelJS } defer></script>
 	}
 }
 

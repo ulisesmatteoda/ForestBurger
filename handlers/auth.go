@@ -61,6 +61,10 @@ func (a *API) RequiereAdmin(next http.Handler) http.Handler {
 		if aj, err := a.q.GetAjustes(ctx); err == nil {
 			ctx = views.ConLocalAbierto(ctx, aj.LocalAbierto)
 		}
+		// El aviso de pedido nuevo también está en todas las pantallas del panel.
+		if aviso, err := a.avisoPedido(ctx); err == nil {
+			ctx = views.ConAviso(ctx, aviso)
+		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

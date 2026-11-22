@@ -175,13 +175,14 @@ templ ModalExtra(f FormExtra) {
 
 // ModalConfirmarBorradoExtra pide confirmar antes de borrar, y recuerda que apagarlo alcanza si
 // solo falta por hoy.
-templ ModalConfirmarBorradoExtra(e db.Extra) {
+templ ModalConfirmarBorradoExtra(e db.Extra, enCurso int64) {
 	@Modal(OpcionesModal{Titulo: "¿BORRAR EXTRA?", Alerta: true, Describe: "texto-borrar", Chico: true}) {
 		<div class="modal-cuerpo">
 			<p class="confirmar-texto" id="texto-borrar">
 				Vas a borrar <strong>{ e.Nombre }</strong>. No se puede deshacer. Si solo no lo tenés
 				hoy, mejor apagalo.
 			</p>
+			@AvisoPedidosEnCurso(enCurso)
 		</div>
 		<div class="modal-pie pie-fin">
 			@BotonCancelarModal()
