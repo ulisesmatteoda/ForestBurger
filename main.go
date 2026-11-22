@@ -44,7 +44,7 @@ func main() {
 	// Instancia del repositorio generado por sqlc.
 	queries := sqlc.New(conn)
 	// Instancio api para llamar los metodos de endpoints
-	api := handlers.NewAPI(queries)
+	api := handlers.NewAPI(conn)
 
 	// Solo en desarrollo (DEV_ADMIN_EMAIL y DEV_ADMIN_PASSWORD en el .env): deja un admin listo para
 	// entrar, porque make run arranca con la base vacía. Si falla, se avisa pero la app arranca igual.

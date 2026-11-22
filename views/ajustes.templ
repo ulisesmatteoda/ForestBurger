@@ -1,0 +1,249 @@
+package views
+
+import (
+	"context"
+	"fmt"
+)
+
+// NombresDias va en el orden de la tabla horario (0 = lunes ... 6 = domingo).
+var NombresDias = [7]string{"Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"}
+
+// FormDia es el horario de un día como se escribe en el form ("20:00").
+type FormDia struct {
+	Abierto     bool
+	Desde, Hasta string
+}
+
+// FormAjustes son los datos de la pantalla Ajustes, como texto (lo que se escribió), para volver a
+// mostrarlos si hubo un error.
+type FormAjustes struct {
+	Dias            [7]FormDia
+	Whatsapp        string
+	DireccionRetiro string
+	AliasCbu        string
+	Titular         string
+	DeliveryActivo  bool
+	CostoEnvio      string
+	PedidoMinimo    string // vacío: sin mínimo
+	Error           string
+	Guardado        bool // recién se guardó: muestra el aviso
+}
+
+// AjustesPage es la sección Ajustes.
+templ AjustesPage(f FormAjustes) {
+	@Layout("Ajustes", SeccionAjustes) {
+		<header class="encabezado">
+			<div>
+				<h1>AJUSTES</h1>
+				<p class="subtitulo">Datos del local que ve el cliente en la web. Los cambios se aplican apenas guardás.</p>
+			</div>
+		</header>
+		@AjustesForm(f)
+	}
+}
+
+// AjustesForm es todo el formulario. Al guardar con htmx, el servidor lo devuelve entero (con el
+// aviso de guardado o con el error), así queda igual a lo que hay en la base.
+templ AjustesForm(f FormAjustes) {
+	<form id="form-ajustes" class="ajustes" method="post" action="/admin/ajustes" hx-post="/admin/ajustes" hx-target="this" hx-swap="outerHTML">
+		if f.Error != "" {
+			<p class="error" role="alert">{ f.Error }</p>
+		}
+		<div class="ajustes-grilla">
+			<div class="ajustes-columna">
+				<section class="tarjeta">
+					<div class="tarjeta-cabecera">
+						<h2 class="tarjeta-titulo">HORARIOS</h2>
+						<p class="tarjeta-sub">Fuera de horario la web no toma pedidos. El switch del costado sirve para cerrar antes un día puntual.</p>
+					</div>
+					<div class="dias">
+						for i, d := range f.Dias {
+							@filaDia(i, d)
+						}
+					</div>
+					<p class="ayuda">Si cierra después de medianoche (por ejemplo, de 20:00 a 00:30), poné la hora igual: se entiende que es el día siguiente.</p>
+				</section>
+				<section class="tarjeta">
+					<div class="tarjeta-cabecera">
+						<h2 class="tarjeta-titulo">CONTACTO</h2>
+						<p class="tarjeta-sub">A este WhatsApp llegan los comprobantes y las consultas de “¿algún problema?”.</p>
+					</div>
+					<div class="campos-fila">
+						<div class="campo">
+							<label for="whatsapp">WhatsApp del local</label>
+							<input id="whatsapp" name="whatsapp" type="tel" inputmode="tel" value={ f.Whatsapp } maxlength="25" placeholder="2236001122"/>
+						</div>
+						<div class="campo">
+							<label for="direccion_retiro">Dirección para retirar</label>
+							<input id="direccion_retiro" name="direccion_retiro" type="text" value={ f.DireccionRetiro } maxlength="200"/>
+						</div>
+					</div>
+				</section>
+			</div>
+			<div class="ajustes-columna">
+				<section class="tarjeta">
+					<div class="tarjeta-cabecera">
+						<h2 class="tarjeta-titulo">PAGO POR TRANSFERENCIA</h2>
+						<p class="tarjeta-sub">Se le muestra al cliente en la página de seguimiento.</p>
+					</div>
+					// Lo que se escribe en el alias y el titular actualiza la vista previa (htmx, sin JS).
+					<div class="campo">
+						<label for="alias_cbu">Alias o CBU</label>
+						<input
+							id="alias_cbu"
+							name="alias_cbu"
+							type="text"
+							value={ f.AliasCbu }
+							maxlength="60"
+							hx-get="/admin/ajustes/transferencia"
+							hx-trigger="keyup changed delay:300ms"
+							hx-include="#alias_cbu, #titular"
+							hx-target="#vista-transferencia"
+							hx-swap="outerHTML"
+						/>
+					</div>
+					<div class="campo">
+						<label for="titular">Titular de la cuenta</label>
+						<input
+							id="titular"
+							name="titular"
+							type="text"
+							value={ f.Titular }
+							maxlength="100"
+							hx-get="/admin/ajustes/transferencia"
+							hx-trigger="keyup changed delay:300ms"
+							hx-include="#alias_cbu, #titular"
+							hx-target="#vista-transferencia"
+							hx-swap="outerHTML"
+						/>
+					</div>
+					<p class="ayuda ayuda-suelta">El titular ayuda a que el cliente confirme que le transfiere a la cuenta correcta.</p>
+					@VistaTransferencia(f.AliasCbu, f.Titular)
+				</section>
+				<section class="tarjeta tarjeta-delivery">
+					<div class="tarjeta-cabecera con-switch">
+						<div>
+							<h2 class="tarjeta-titulo">DELIVERY</h2>
+							<p class="tarjeta-sub">Si lo apagás, la web solo ofrece retiro en el local.</p>
+						</div>
+						@Switch("delivery_activo", f.DeliveryActivo, "Delivery", nil)
+					</div>
+					<div class="campos-fila delivery-campos">
+						<div class="campo">
+							<label for="costo_envio">Costo de envío</label>
+							<div class="campo-precio">
+								<span class="prefijo" aria-hidden="true">$</span>
+								<input id="costo_envio" name="costo_envio" type="number" inputmode="decimal" min="0" step="0.01" value={ f.CostoEnvio }/>
+							</div>
+						</div>
+						<div class="campo">
+							<label for="pedido_minimo">Pedido mínimo (opcional)</label>
+							<div class="campo-precio">
+								<span class="prefijo" aria-hidden="true">$</span>
+								<input id="pedido_minimo" name="pedido_minimo" type="number" inputmode="decimal" min="0" step="0.01" value={ f.PedidoMinimo } placeholder="Sin mínimo"/>
+							</div>
+						</div>
+					</div>
+					<p class="ayuda ayuda-suelta">Poné 0 si el envío es gratis.</p>
+				</section>
+			</div>
+		</div>
+		<div class="barra-guardar">
+			// Avisa de cambios sin guardar: con el primer cambio del form, htmx pide el aviso al
+			// servidor (once: una sola vez). Al guardar, el form vuelve entero y el aviso arranca vacío.
+			<span
+				class="aviso-cambios"
+				aria-live="polite"
+				hx-get="/admin/ajustes/cambios"
+				hx-trigger="input from:#form-ajustes once, change from:#form-ajustes once"
+				hx-target="this"
+				hx-swap="innerHTML"
+			>
+				if f.Guardado {
+					<span class="guardado">✓ Cambios guardados</span>
+				}
+			</span>
+			<button type="submit" class="boton boton-primario">GUARDAR CAMBIOS</button>
+		</div>
+	</form>
+}
+
+// patronHora es "HH:MM" en 24 horas. Es un campo de texto y no type="time" porque ese lo dibuja
+// cada navegador según su idioma (en inglés, "08:00 PM"); así siempre se ve "20:00".
+const patronHora = `([01][0-9]|2[0-3]):[0-5][0-9]`
+
+// filaDia es un día del horario. Con el switch apagado, el CSS esconde las horas y muestra
+// "Cerrado"; las horas igual viajan con el form, así no se pierden si se vuelve a abrir.
+templ filaDia(i int, d FormDia) {
+	<div class="dia">
+		<span class="dia-nombre">{ NombresDias[i] }</span>
+		@Switch(fmt.Sprintf("abierto_%d", i), d.Abierto, "Abre el "+NombresDias[i], nil)
+		<span class="dia-cerrado">Cerrado</span>
+		<span class="dia-horas">
+			<input class="hora" type="text" inputmode="numeric" pattern={ patronHora } maxlength="5" placeholder="20:00" name={ fmt.Sprintf("desde_%d", i) } value={ d.Desde } aria-label={ "Abre el " + NombresDias[i] + " a las" }/>
+			<span>a</span>
+			<input class="hora" type="text" inputmode="numeric" pattern={ patronHora } maxlength="5" placeholder="00:00" name={ fmt.Sprintf("hasta_%d", i) } value={ d.Hasta } aria-label={ "Cierra el " + NombresDias[i] + " a las" }/>
+		</span>
+	</div>
+}
+
+// VistaTransferencia es el "Así lo ve el cliente". Sin datos muestra los lugares a completar.
+templ VistaTransferencia(alias, titular string) {
+	<div id="vista-transferencia" class="vista-transferencia">
+		<span class="vista-etiqueta">ASÍ LO VE EL CLIENTE</span>
+		<span class="vista-texto">Transferí el total al alias</span>
+		<span class="vista-alias">{ textoOMarcador(alias, "[ALIAS DEL LOCAL]") }</span>
+		<span class="vista-texto">Titular: { textoOMarcador(titular, "[TITULAR]") }</span>
+	</div>
+}
+
+// AvisoCambios es lo que aparece al lado de GUARDAR apenas se toca algo. DESCARTAR vuelve a cargar
+// la página, con lo que está guardado.
+templ AvisoCambios() {
+	<span>Tenés cambios sin guardar</span>
+	<a class="boton-texto descartar" href="/admin/ajustes">DESCARTAR</a>
+}
+
+type claveLocalAbierto struct{}
+
+// ConLocalAbierto guarda en el contexto si el local está abierto, para el switch de la barra
+// lateral (lo hace el middleware del panel, como con el mail del admin).
+func ConLocalAbierto(ctx context.Context, abierto bool) context.Context {
+	return context.WithValue(ctx, claveLocalAbierto{}, abierto)
+}
+
+// localAbiertoDe devuelve el estado guardado en el contexto; ok en false si no hay (fuera del panel).
+func localAbiertoDe(ctx context.Context) (abierto, ok bool) {
+	abierto, ok = ctx.Value(claveLocalAbierto{}).(bool)
+	return abierto, ok
+}
+
+// LocalEstado es el switch "Local abierto" de la barra lateral. Se guarda apenas se toca y el
+// servidor lo devuelve con el texto que corresponde.
+templ LocalEstado(abierto bool) {
+	<label class={ "local-estado", templ.KV("cerrado", !abierto) }>
+		<span>
+			if abierto {
+				<span class="local-estado-titulo">Local abierto</span>
+				<span class="local-estado-sub">La web toma pedidos</span>
+			} else {
+				<span class="local-estado-titulo">Local cerrado</span>
+				<span class="local-estado-sub">La web no toma pedidos</span>
+			}
+		</span>
+		@Switch("abierto", abierto, "Local abierto", templ.Attributes{
+			"hx-put":     "/admin/local/abierto",
+			"hx-trigger": "change",
+			"hx-include": "this",
+			"hx-target":  "closest .local-estado",
+			"hx-swap":    "outerHTML",
+		})
+	</label>
+}
+
+func textoOMarcador(s, marcador string) string {
+	if s == "" {
+		return marcador
+	}
+	return s
+}

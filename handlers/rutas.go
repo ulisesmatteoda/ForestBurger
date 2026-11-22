@@ -52,4 +52,10 @@ func (a *API) RutasAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /admin/extras/{id}/disponible", a.CambiarDisponibleExtra)
 	mux.HandleFunc("GET /admin/extras/{id}/borrar", a.ConfirmarBorrarExtra)
 	mux.HandleFunc("DELETE /admin/extras/{id}", a.BorrarExtra)
+
+	mux.HandleFunc("GET /admin/ajustes", a.Ajustes)
+	mux.HandleFunc("POST /admin/ajustes", a.GuardarAjustes)
+	mux.HandleFunc("GET /admin/ajustes/transferencia", a.VistaTransferencia)
+	mux.HandleFunc("GET /admin/ajustes/cambios", a.AvisoCambios)
+	mux.HandleFunc("PUT /admin/local/abierto", a.CambiarLocalAbierto)
 }

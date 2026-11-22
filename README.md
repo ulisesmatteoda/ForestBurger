@@ -109,6 +109,11 @@ login. La raíz `/` por ahora redirige al panel; más adelante va a ser el menú
 | `PUT /admin/extras/{id}/disponible`| El switch de la tabla: guarda apenas se toca y devuelve la fila          |
 | `GET /admin/extras/{id}/borrar`    | Modal de confirmación del borrado                                        |
 | `DELETE /admin/extras/{id}`        | Borra el extra; devuelve el panel y cierra el modal                      |
+| `GET /admin/ajustes`               | Sección Ajustes: horarios, contacto, transferencia y delivery en un solo form |
+| `POST /admin/ajustes`              | Guarda todo en una transacción; con htmx devuelve el form con el aviso o el error |
+| `GET /admin/ajustes/transferencia` | Vista previa "Así lo ve el cliente" mientras se escribe el alias y el titular |
+| `GET /admin/ajustes/cambios`       | Aviso "Tenés cambios sin guardar · DESCARTAR" (lo pide htmx con el primer cambio) |
+| `PUT /admin/local/abierto`         | El switch "Local abierto" de la barra lateral: guarda apenas se toca     |
 | `POST /admin/productos/foto-previa` | Valida la foto elegida y devuelve su vista previa (o el error). No guarda nada |
 | `GET /uploads/<archivo>`           | Sirve las fotos de los productos (público: las va a usar el menú). No lista la carpeta |
 | `DELETE /admin/productos/{id}`     | Borra el producto. Con htmx devuelve el panel con el mismo filtro (`?categoria=`) y cierra el modal (OOB); sin htmx, 303 a `/admin` |
@@ -168,6 +173,24 @@ tabla `extra`. Se ven en `/admin/extras` con su precio como "+ $1.000" (se suma 
   menú sin borrarlo. Se guarda apenas se toca (`hx-put`), y la fila vuelve atenuada con "No".
 - **Alta y edición** en el mismo modal (nombre, precio y disponible). **Borrar** pide confirmación
   y recuerda que, si solo falta por hoy, alcanza con apagarlo.
+
+### Ajustes
+
+Los datos del local que va a usar la web, en `/admin/ajustes`. Viven en la tabla `ajustes`
+(una sola fila) y en `horario` (una fila por día, 0 = lunes).
+
+- **Horarios:** cada día tiene un switch (apagado = "Cerrado") y las horas en formato 20:00. Si
+  la hora de cierre es menor que la de apertura, se entiende que cierra al día siguiente (de 20:00
+  a 01:00). Las horas de un día cerrado se conservan para cuando se vuelva a abrir.
+- **Contacto:** el WhatsApp del local (se guarda solo con números) y la dirección para retirar.
+- **Pago por transferencia:** alias o CBU y titular, con la vista previa "Así lo ve el cliente"
+  que se actualiza mientras se escribe (htmx, sin JS propio).
+- **Delivery:** si está apagado la web solo ofrece retiro; costo de envío (0 = gratis) y pedido
+  mínimo opcional.
+- Se guarda todo junto con **GUARDAR CAMBIOS**, en una transacción. Con el primer cambio aparece
+  "Tenés cambios sin guardar · DESCARTAR" (DESCARTAR vuelve a cargar lo guardado).
+- **Local abierto:** el switch de abajo de la barra lateral, en todas las pantallas del panel.
+  Apagado, la web no toma pedidos aunque esté en horario. Se guarda apenas se toca.
 
 ### Borrar un producto
 

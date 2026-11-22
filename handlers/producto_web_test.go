@@ -119,8 +119,15 @@ func setupAPI(t *testing.T) (*http.ServeMux, *sqlc.Queries, *API) {
 		t.Fatal(err)
 	}
 
+	// ajustes y horario tienen siempre una fila (y siete): se vuelven a sus valores de fábrica.
+	if _, err := conn.Exec(`TRUNCATE ajustes, horario;
+		INSERT INTO ajustes (id) VALUES (1);
+		INSERT INTO horario (dia) SELECT generate_series(0, 6)`); err != nil {
+		t.Fatalf("no se pudieron reiniciar los ajustes: %v", err)
+	}
+
 	q := sqlc.New(conn)
-	api := NewAPI(q)
+	api := NewAPI(conn)
 	api.dirFotos = t.TempDir()
 	mux := http.NewServeMux()
 	api.Rutas(mux)

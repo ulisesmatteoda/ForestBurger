@@ -56,7 +56,12 @@ func (a *API) RequiereAdmin(next http.Handler) http.Handler {
 			http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(auth.ConAdmin(r.Context(), email)))
+		ctx := auth.ConAdmin(r.Context(), email)
+		// El switch "Local abierto" está en la barra lateral de todas las pantallas del panel.
+		if aj, err := a.q.GetAjustes(ctx); err == nil {
+			ctx = views.ConLocalAbierto(ctx, aj.LocalAbierto)
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

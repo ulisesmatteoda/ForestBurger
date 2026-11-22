@@ -43,7 +43,7 @@ var seccionesPanel = []seccionPanel{
 	{SeccionProductos, "Productos", "/admin", true},
 	{SeccionExtras, "Extras", "/admin/extras", true},
 	{SeccionPedidos, "Pedidos", "/admin/pedidos", false},
-	{SeccionAjustes, "Ajustes", "/admin/ajustes", false},
+	{SeccionAjustes, "Ajustes", "/admin/ajustes", true},
 }
 
 // Layout es la estructura del panel: barra lateral + contenido. seccion es la clave de la sección
@@ -71,6 +71,11 @@ templ Layout(titulo, seccion string) {
 						}
 					}
 				</nav>
+				if abierto, ok := localAbiertoDe(ctx); ok {
+					<div class="sidebar-local">
+						@LocalEstado(abierto)
+					</div>
+				}
 				if email := auth.AdminDesdeContexto(ctx); email != "" {
 					<div class="sidebar-sesion">
 						<span class="sidebar-admin">{ email }</span>

@@ -261,6 +261,81 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 .boton-ancho { width: 100%; }
 @media (max-width: 480px) { .login-tarjeta { padding: 28px 20px; } }
 
+/* ---------- Local abierto (abajo de la barra lateral) ---------- */
+.sidebar-local { margin-top: auto; }
+.sidebar-local + .sidebar-sesion { margin-top: 0; }
+.local-estado {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px; border: 1px solid var(--fb-divisor); border-radius: var(--fb-radius-lg);
+  cursor: pointer;
+}
+.local-estado-titulo { display: block; font-size: 15px; font-weight: 700; }
+.local-estado-sub { display: block; font-size: 12px; color: var(--fb-texto-secundario); }
+.local-estado.cerrado { border-color: var(--fb-peligro); }
+.local-estado.cerrado .local-estado-titulo { color: var(--fb-peligro); }
+
+/* ---------- Ajustes ---------- */
+.ajustes { display: flex; flex-direction: column; gap: 24px; }
+.ajustes-grilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+.ajustes-columna { display: flex; flex-direction: column; gap: 20px; }
+.tarjeta {
+  display: flex; flex-direction: column; gap: 18px;
+  padding: 24px; background: var(--fb-verde-oscuro);
+  border: 1px solid var(--fb-divisor); border-radius: 18px;
+}
+.tarjeta-cabecera.con-switch { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.tarjeta-titulo {
+  margin: 0; font-family: 'Barlow Semi Condensed', sans-serif; font-weight: 800;
+  font-size: 24px; letter-spacing: 0.5px; color: var(--fb-crema);
+}
+.tarjeta-sub { margin: 6px 0 0; font-size: 13px; line-height: 1.4; color: var(--fb-texto-secundario); }
+.ayuda.ayuda-suelta { margin: 0; }
+
+/* Horarios: con el switch apagado se esconden las horas y aparece "Cerrado" (las horas igual
+   viajan con el form, así no se pierden). */
+.dias { display: flex; flex-direction: column; }
+.dia { display: grid; grid-template-columns: 96px auto 1fr; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--fb-divisor); }
+.dia:last-child { border-bottom: 0; }
+.dia-nombre { font-weight: 700; font-size: 15px; }
+.dia-horas { display: flex; align-items: center; gap: 8px; color: var(--fb-texto-secundario); }
+.dia-cerrado { display: none; font-size: 14px; color: var(--fb-texto-secundario); }
+.dia:has(.switch:not(:checked)) .dia-horas { display: none; }
+.dia:has(.switch:not(:checked)) .dia-cerrado { display: block; }
+.hora {
+  width: 84px; padding: 8px 10px; text-align: center;
+  background: var(--fb-superficie); border: 1px solid var(--fb-borde); border-radius: var(--fb-radius-md);
+  color: var(--fb-texto); font-family: inherit; font-size: 15px;
+}
+.hora:focus { outline: 2px solid var(--fb-crema); outline-offset: 1px; }
+
+/* Vista previa de la transferencia ("Así lo ve el cliente"). */
+.vista-transferencia {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 16px; border: 1px dashed var(--fb-borde); border-radius: var(--fb-radius-lg);
+}
+.vista-etiqueta { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--fb-texto-secundario); }
+.vista-texto { font-size: 13px; color: var(--fb-texto-secundario); }
+.vista-alias {
+  font-family: 'Barlow Semi Condensed', sans-serif; font-weight: 800; font-size: 24px;
+  color: var(--fb-crema); overflow-wrap: anywhere;
+}
+
+/* Delivery apagado: los campos quedan atenuados (se pueden seguir editando). */
+.tarjeta-delivery:has(.con-switch .switch:not(:checked)) .delivery-campos { opacity: 0.45; }
+
+/* Barra de guardar, al pie. */
+.barra-guardar {
+  display: flex; justify-content: flex-end; align-items: center; gap: 20px; flex-wrap: wrap;
+  padding-top: 20px; border-top: 1px solid var(--fb-divisor);
+}
+.aviso-cambios { display: flex; align-items: center; gap: 16px; font-size: 14px; color: var(--fb-texto-secundario); }
+.aviso-cambios .descartar {
+  font-family: 'Barlow Semi Condensed', sans-serif; font-weight: 700; font-size: 17px; letter-spacing: 1px;
+  color: var(--fb-crema); text-decoration: none;
+}
+.aviso-cambios .guardado { color: var(--fb-crema); font-weight: 600; }
+@media (max-width: 1000px) { .ajustes-grilla { grid-template-columns: 1fr; } }
+
 /* ---------- Celular: la barra lateral pasa arriba ---------- */
 @media (max-width: 800px) {
   .app { flex-direction: column; }
@@ -270,6 +345,7 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   .contenido { padding: 24px 20px; }
   .sidebar-sesion { margin-top: 0; padding-top: 0; border-top: 0; flex-direction: row; align-items: center; width: 100%; justify-content: space-between; }
   .sidebar-sesion .boton { width: auto; }
+  .sidebar-local { margin-top: 0; width: 100%; }
 }
 
 fieldset.campo { border: 0; padding: 0; margin: 0; }

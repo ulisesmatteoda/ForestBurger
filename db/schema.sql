@@ -30,3 +30,27 @@ CREATE TABLE IF NOT EXISTS extra (
     disponible BOOLEAN NOT NULL DEFAULT true,
     creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Datos del local que se cargan en Ajustes. Una sola fila (id = 1): no hay "varios ajustes".
+CREATE TABLE IF NOT EXISTS ajustes (
+    id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    local_abierto BOOLEAN NOT NULL DEFAULT true,       -- el switch de la barra lateral: si la web toma pedidos
+    whatsapp VARCHAR(20) NOT NULL DEFAULT '',          -- solo números (con código de área)
+    direccion_retiro VARCHAR(200) NOT NULL DEFAULT '',
+    alias_cbu VARCHAR(60) NOT NULL DEFAULT '',
+    titular VARCHAR(100) NOT NULL DEFAULT '',
+    delivery_activo BOOLEAN NOT NULL DEFAULT true,
+    costo_envio DECIMAL(10,2) NOT NULL DEFAULT 0 CHECK (costo_envio >= 0),
+    pedido_minimo DECIMAL(10,2) CHECK (pedido_minimo >= 0)  -- NULL: sin mínimo
+);
+INSERT INTO ajustes (id) VALUES (1) ON CONFLICT DO NOTHING;
+
+-- Horario de cada día (0 = lunes ... 6 = domingo). Las horas van como "HH:MM": si hasta es menor
+-- que desde, cierra al día siguiente (de 20:00 a 01:00).
+CREATE TABLE IF NOT EXISTS horario (
+    dia SMALLINT PRIMARY KEY CHECK (dia BETWEEN 0 AND 6),
+    abierto BOOLEAN NOT NULL DEFAULT true,
+    desde VARCHAR(5) NOT NULL DEFAULT '20:00' CHECK (desde ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+    hasta VARCHAR(5) NOT NULL DEFAULT '00:00' CHECK (hasta ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')
+);
+INSERT INTO horario (dia) SELECT generate_series(0, 6) ON CONFLICT DO NOTHING;
