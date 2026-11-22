@@ -1,6 +1,10 @@
 package handlers
 
-import "net/http"
+import (
+	"net/http"
+
+	"forestburger/views"
+)
 
 // Rutas registra todo lo de la app que pasa por la API: el login (público) y el panel (protegido).
 // La usan main.go y los tests, así los tests prueban exactamente lo mismo que corre.
@@ -31,7 +35,7 @@ func (a *API) RutasAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin", a.Index)
 	// "nuevo" es un tramo literal: el mux lo prefiere antes que {id}, así no choca con la fila.
 	mux.HandleFunc("GET /admin/productos/nuevo", a.NuevoProducto)
-	mux.HandleFunc("GET /admin/productos/nuevo/cerrar", a.CerrarModal)
+	mux.HandleFunc("GET "+views.RutaCerrarModal, a.CerrarModal)
 	mux.HandleFunc("POST /admin/productos", a.CrearProducto)
 	mux.HandleFunc("POST /admin/productos/foto-previa", a.FotoPrevia)
 	mux.HandleFunc("GET /admin/productos/{id}", a.FilaProducto)
@@ -39,4 +43,13 @@ func (a *API) RutasAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/productos/{id}/borrar", a.ConfirmarBorrado)
 	mux.HandleFunc("PUT /admin/productos/{id}", a.ActualizarProducto)
 	mux.HandleFunc("DELETE /admin/productos/{id}", a.BorrarProducto)
+
+	mux.HandleFunc("GET /admin/extras", a.Extras)
+	mux.HandleFunc("GET /admin/extras/nuevo", a.NuevoExtra)
+	mux.HandleFunc("POST /admin/extras", a.CrearExtra)
+	mux.HandleFunc("GET /admin/extras/{id}/editar", a.EditarExtra)
+	mux.HandleFunc("POST /admin/extras/{id}", a.ActualizarExtra)
+	mux.HandleFunc("PUT /admin/extras/{id}/disponible", a.CambiarDisponibleExtra)
+	mux.HandleFunc("GET /admin/extras/{id}/borrar", a.ConfirmarBorrarExtra)
+	mux.HandleFunc("DELETE /admin/extras/{id}", a.BorrarExtra)
 }

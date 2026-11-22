@@ -47,7 +47,7 @@ func (a *API) NuevoProducto(w http.ResponseWriter, r *http.Request) {
 	views.ModalNuevoProducto(views.FormProducto{}).Render(r.Context(), w)
 }
 
-// CerrarModal: GET /admin/productos/nuevo/cerrar
+// CerrarModal: GET /admin/modal/cerrar (views.RutaCerrarModal)
 // Responde vacío: htmx lo pone adentro de #modal y el modal desaparece.
 func (a *API) CerrarModal(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
@@ -165,7 +165,7 @@ func (a *API) ActualizarProducto(w http.ResponseWriter, r *http.Request) {
 	// Se trae antes para saber qué foto tenía (y avisar si ya no existe).
 	anterior, err := a.q.GetProducto(r.Context(), id)
 	if errors.Is(err, sql.ErrNoRows) {
-		productoNoEncontrado(w)
+		noEncontrado(w, "producto")
 		return
 	}
 	if err != nil {
@@ -203,7 +203,7 @@ func (a *API) ActualizarProducto(w http.ResponseWriter, r *http.Request) {
 		Descripcion: req.descripcionNull(),
 	})
 	if errors.Is(err, sql.ErrNoRows) {
-		productoNoEncontrado(w)
+		noEncontrado(w, "producto")
 		return
 	}
 	if err != nil {
@@ -378,7 +378,7 @@ func (a *API) productoDeRuta(w http.ResponseWriter, r *http.Request) (sqlc.Produ
 	}
 	p, err := a.q.GetProducto(r.Context(), id)
 	if errors.Is(err, sql.ErrNoRows) {
-		productoNoEncontrado(w)
+		noEncontrado(w, "producto")
 		return sqlc.Producto{}, false
 	}
 	if err != nil {
@@ -388,11 +388,11 @@ func (a *API) productoDeRuta(w http.ResponseWriter, r *http.Request) (sqlc.Produ
 	return p, true
 }
 
-// productoNoEncontrado responde 404. HTMX ignora los 4xx, pero respeta HX-Refresh: la página se
-// recarga y la lista deja de mostrar la fila de un producto que ya no existe.
-func productoNoEncontrado(w http.ResponseWriter) {
+// noEncontrado responde 404 con el nombre de lo que no está ("producto", "extra"). HTMX ignora los
+// 4xx, pero respeta HX-Refresh: la página se recarga y deja de mostrar lo que ya no existe.
+func noEncontrado(w http.ResponseWriter, que string) {
 	w.Header().Set("HX-Refresh", "true")
-	http.Error(w, "producto no encontrado", http.StatusNotFound)
+	http.Error(w, que+" no encontrado", http.StatusNotFound)
 }
 
 // renderFilaEditar renderiza la fila de un producto en modo edición.

@@ -20,3 +20,13 @@ CREATE TABLE IF NOT EXISTS admin (
     password_hash TEXT NOT NULL,
     creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Agregados que el cliente le suma a una hamburguesa (cheddar, panceta, medallón...). disponible
+-- en false lo saca del menú sin borrarlo: sirve para un día que no hay.
+CREATE TABLE IF NOT EXISTS extra (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    precio DECIMAL(10,2) NOT NULL CHECK (precio >= 0),
+    disponible BOOLEAN NOT NULL DEFAULT true,
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);

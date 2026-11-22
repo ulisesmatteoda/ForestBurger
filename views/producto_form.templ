@@ -32,119 +32,60 @@ var categorias = []struct{ Valor, Label string }{
 // adentro del cuadro: por eso el target:.modal-fondo). Si hay error, el servidor devuelve este mismo
 // modal con f.Error y lo que se escribió. method/action son el respaldo para cuando no hay JS.
 templ ModalNuevoProducto(f FormProducto) {
-	<div
-		class="modal-fondo"
-		hx-get="/admin/productos/nuevo/cerrar"
-		hx-target="#modal"
-		hx-swap="innerHTML"
-		hx-trigger="click target:.modal-fondo, keyup[key=='Escape'] from:body"
-	>
-		<div class="modal" role="dialog" aria-modal="true" aria-labelledby="titulo-modal">
-			<div class="modal-cabecera">
-				<div>
-					<h2 class="modal-titulo" id="titulo-modal">NUEVO PRODUCTO</h2>
-					<p class="modal-sub">Aparece en el menú apenas lo guardes.</p>
-				</div>
-				<button
-					type="button"
-					class="cerrar"
-					aria-label="Cerrar"
-					hx-get="/admin/productos/nuevo/cerrar"
-					hx-target="#modal"
-				>
-					@IconoCerrar()
-				</button>
+	@Modal(OpcionesModal{Titulo: "NUEVO PRODUCTO", Subtitulo: "Aparece en el menú apenas lo guardes."}) {
+		<form
+			method="post"
+			action="/admin/productos"
+			enctype="multipart/form-data"
+			hx-post="/admin/productos"
+			hx-encoding="multipart/form-data"
+			hx-target="#panel-productos"
+			hx-swap="outerHTML"
+		>
+			<div class="modal-cuerpo">
+				if f.Error != "" {
+					<p class="error" role="alert">{ f.Error }</p>
+				}
+				@camposProducto(f)
 			</div>
-			<form
-				method="post"
-				action="/admin/productos"
-				enctype="multipart/form-data"
-				hx-post="/admin/productos"
-				hx-encoding="multipart/form-data"
-				hx-target="#panel-productos"
-				hx-swap="outerHTML"
-			>
-				<div class="modal-cuerpo">
-					if f.Error != "" {
-						<p class="error" role="alert">{ f.Error }</p>
-					}
-					@camposProducto(f)
+			<div class="modal-pie">
+				<button
+					type="reset"
+					class="boton boton-texto"
+					hx-get="/admin/productos/nuevo"
+					hx-target="#modal"
+					hx-swap="innerHTML"
+				>LIMPIAR</button>
+				<div class="modal-acciones">
+					@BotonCancelarModal()
+					<button type="submit" class="boton boton-primario">GUARDAR PRODUCTO</button>
 				</div>
-				<div class="modal-pie">
-					<button
-						type="reset"
-						class="boton boton-texto"
-						hx-get="/admin/productos/nuevo"
-						hx-target="#modal"
-						hx-swap="innerHTML"
-					>LIMPIAR</button>
-					<div class="modal-acciones">
-						<button
-							type="button"
-							class="boton boton-secundario"
-							hx-get="/admin/productos/nuevo/cerrar"
-							hx-target="#modal"
-						>CANCELAR</button>
-						<button type="submit" class="boton boton-primario">GUARDAR PRODUCTO</button>
-					</div>
-				</div>
-			</form>
-		</div>
-	</div>
+			</div>
+		</form>
+	}
 }
 
 // ModalConfirmarBorrado pide confirmar antes de borrar, con el estilo del panel (el confirm() del
 // navegador no se puede estilizar). Se cierra igual que el alta. BORRAR reemplaza el panel con el
 // mismo filtro que estaba activo, así el contador y la lista quedan al día, y cierra el modal.
 templ ModalConfirmarBorrado(p db.Producto, categoria string) {
-	<div
-		class="modal-fondo"
-		hx-get="/admin/productos/nuevo/cerrar"
-		hx-target="#modal"
-		hx-swap="innerHTML"
-		hx-trigger="click target:.modal-fondo, keyup[key=='Escape'] from:body"
-	>
-		<div class="modal chico" role="alertdialog" aria-modal="true" aria-labelledby="titulo-borrar" aria-describedby="texto-borrar">
-			<div class="modal-cabecera">
-				<h2 class="modal-titulo" id="titulo-borrar">¿BORRAR PRODUCTO?</h2>
-				<button
-					type="button"
-					class="cerrar"
-					aria-label="Cerrar"
-					hx-get="/admin/productos/nuevo/cerrar"
-					hx-target="#modal"
-				>
-					@IconoCerrar()
-				</button>
-			</div>
-			<div class="modal-cuerpo">
-				<p class="confirmar-texto" id="texto-borrar">
-					Vas a borrar <strong>{ p.Nombre }</strong> del menú. No se puede deshacer.
-				</p>
-			</div>
-			<div class="modal-pie pie-fin">
-				<button
-					type="button"
-					class="boton boton-secundario"
-					hx-get="/admin/productos/nuevo/cerrar"
-					hx-target="#modal"
-				>CANCELAR</button>
-				<button
-					type="button"
-					class="boton boton-peligro"
-					hx-delete={ fmt.Sprintf("/admin/productos/%d?categoria=%s", p.ID, url.QueryEscape(categoria)) }
-					hx-target="#panel-productos"
-					hx-swap="outerHTML"
-				>BORRAR</button>
-			</div>
+	@Modal(OpcionesModal{Titulo: "¿BORRAR PRODUCTO?", Alerta: true, Describe: "texto-borrar", Chico: true}) {
+		<div class="modal-cuerpo">
+			<p class="confirmar-texto" id="texto-borrar">
+				Vas a borrar <strong>{ p.Nombre }</strong> del menú. No se puede deshacer.
+			</p>
 		</div>
-	</div>
-}
-
-// ModalCerradoOOB vacía el modal desde una respuesta que apunta a otro lado (el alta exitosa
-// reemplaza el panel de productos y, de paso, cierra el modal).
-templ ModalCerradoOOB() {
-	<div id="modal" hx-swap-oob="innerHTML"></div>
+		<div class="modal-pie pie-fin">
+			@BotonCancelarModal()
+			<button
+				type="button"
+				class="boton boton-peligro"
+				hx-delete={ fmt.Sprintf("/admin/productos/%d?categoria=%s", p.ID, url.QueryEscape(categoria)) }
+				hx-target="#panel-productos"
+				hx-swap="outerHTML"
+			>BORRAR</button>
+		</div>
+	}
 }
 
 // camposProducto son los campos del alta: nombre, categoría, los dos precios, la descripción y la foto.

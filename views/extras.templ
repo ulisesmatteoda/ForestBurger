@@ -1,0 +1,229 @@
+package views
+
+import (
+	"fmt"
+
+	"forestburger/db/sqlc"
+)
+
+// FormExtra son los datos del modal de extras. ID en 0 es un alta; con ID es una edición.
+type FormExtra struct {
+	ID         int32
+	Nombre     string
+	Precio     string
+	Disponible bool
+	Error      string
+}
+
+// ExtrasPage es la sección Extras: la tabla y el lugar del modal. modal es nil con el modal
+// cerrado; con un valor, la página sale con el modal abierto (link directo, F5 o error sin JS).
+templ ExtrasPage(extras []db.Extra, modal *FormExtra) {
+	@Layout("Extras", SeccionExtras) {
+		<header class="encabezado">
+			<div>
+				<h1>EXTRAS</h1>
+				<p class="subtitulo">Lo que el cliente le puede sumar a una hamburguesa.</p>
+			</div>
+			<a
+				href="/admin/extras/nuevo"
+				class="boton boton-primario"
+				hx-get="/admin/extras/nuevo"
+				hx-target="#modal"
+				hx-swap="innerHTML"
+			>+ NUEVO EXTRA</a>
+		</header>
+		@ExtrasPanel(extras, 0)
+		<div id="modal">
+			if modal != nil {
+				@ModalExtra(*modal)
+			}
+		</div>
+	}
+}
+
+// ExtrasPanel es la nota, el contador y la tabla. Es lo que reemplaza htmx al guardar o borrar,
+// así el contador queda al día. nuevoID es el extra recién guardado, que sale resaltado.
+templ ExtrasPanel(extras []db.Extra, nuevoID int32) {
+	<section id="panel-extras">
+		<div class="barra">
+			<p class="nota">Si un día no tenés algo, apagalo y deja de aparecer en el menú sin borrarlo.</p>
+			<span class="conteo">{ conteo(len(extras), "extra", "extras") }</span>
+		</div>
+		<section class="tabla-contenedor">
+			if len(extras) == 0 {
+				<p class="vacio">Todavía no hay extras. Cargá el primero con + Nuevo extra.</p>
+			} else {
+				<table class="tabla">
+					<thead>
+						<tr>
+							<th>EXTRA</th>
+							<th>PRECIO</th>
+							<th>DISPONIBLE</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, e := range extras {
+							@FilaExtra(e, e.ID == nuevoID)
+						}
+					</tbody>
+				</table>
+			}
+		</section>
+	</section>
+}
+
+// FilaExtra es una fila de la tabla. El switch guarda apenas se toca (hx-put) y el servidor
+// devuelve la fila de nuevo: así el "Sí/No" y el atenuado quedan bien sin JS. Un checkbox apagado
+// no se manda con el form, y eso es justamente "no disponible".
+templ FilaExtra(e db.Extra, nuevo bool) {
+	<tr class={ templ.KV("nuevo", nuevo), templ.KV("apagado", !e.Disponible) }>
+		<td><span class="producto-nombre">{ e.Nombre }</span></td>
+		<td class="precio">+ { formatPrecio(e.Precio) }</td>
+		<td>
+			<label class="disponible-celda">
+				@Switch("disponible", e.Disponible, "Disponible: "+e.Nombre, templ.Attributes{
+					"hx-put":     fmt.Sprintf("/admin/extras/%d/disponible", e.ID),
+					"hx-trigger": "change",
+					"hx-include": "this",
+					"hx-target":  "closest tr",
+					"hx-swap":    "outerHTML",
+				})
+				if e.Disponible {
+					<span>Sí</span>
+				} else {
+					<span>No</span>
+				}
+			</label>
+		</td>
+		<td>
+			<div class="acciones">
+				<button
+					class="boton-icono"
+					aria-label={ "Editar " + e.Nombre }
+					hx-get={ fmt.Sprintf("/admin/extras/%d/editar", e.ID) }
+					hx-target="#modal"
+					hx-swap="innerHTML"
+				>
+					@IconoEditar()
+				</button>
+				<button
+					class="boton-icono peligro"
+					aria-label={ "Borrar " + e.Nombre }
+					hx-get={ fmt.Sprintf("/admin/extras/%d/borrar", e.ID) }
+					hx-target="#modal"
+					hx-swap="innerHTML"
+				>
+					@IconoBorrar()
+				</button>
+			</div>
+		</td>
+	</tr>
+}
+
+// ModalExtra es el alta y la edición de un extra (el mismo modal, con o sin datos). Va por POST
+// también para editar, así el form funciona sin JS (un form común no puede mandar PUT).
+templ ModalExtra(f FormExtra) {
+	@Modal(OpcionesModal{Titulo: tituloModalExtra(f), Subtitulo: "Se ofrece en todas las hamburguesas y veggies.", Mediano: true}) {
+		<form
+			method="post"
+			action={ templ.URL(accionExtra(f)) }
+			hx-post={ accionExtra(f) }
+			hx-target="#panel-extras"
+			hx-swap="outerHTML"
+		>
+			<div class="modal-cuerpo">
+				if f.Error != "" {
+					<p class="error" role="alert">{ f.Error }</p>
+				}
+				<div class="campo">
+					<label for="extra-nombre">Nombre</label>
+					<input id="extra-nombre" name="nombre" type="text" value={ f.Nombre } maxlength="100" required autofocus/>
+				</div>
+				<div class="campo">
+					<label for="extra-precio">Precio</label>
+					<div class="campo-precio">
+						<span class="prefijo" aria-hidden="true">+ $</span>
+						<input id="extra-precio" class="con-mas" name="precio" type="number" inputmode="decimal" min="0" step="0.01" value={ f.Precio } required/>
+					</div>
+				</div>
+				<p class="ayuda">Es lo que se suma al precio de la hamburguesa por cada unidad.</p>
+				<label class="fila-disponible">
+					<span>
+						<span class="fila-disponible-titulo">Disponible</span>
+						<span class="fila-disponible-sub">Si lo apagás, no aparece en el menú.</span>
+					</span>
+					@Switch("disponible", f.Disponible, "Disponible", nil)
+				</label>
+			</div>
+			<div class="modal-pie">
+				<button
+					type="reset"
+					class="boton boton-texto"
+					hx-get={ rutaModalExtra(f) }
+					hx-target="#modal"
+					hx-swap="innerHTML"
+				>LIMPIAR</button>
+				<div class="modal-acciones">
+					@BotonCancelarModal()
+					<button type="submit" class="boton boton-primario">GUARDAR EXTRA</button>
+				</div>
+			</div>
+		</form>
+	}
+}
+
+// ModalConfirmarBorradoExtra pide confirmar antes de borrar, y recuerda que apagarlo alcanza si
+// solo falta por hoy.
+templ ModalConfirmarBorradoExtra(e db.Extra) {
+	@Modal(OpcionesModal{Titulo: "¿BORRAR EXTRA?", Alerta: true, Describe: "texto-borrar", Chico: true}) {
+		<div class="modal-cuerpo">
+			<p class="confirmar-texto" id="texto-borrar">
+				Vas a borrar <strong>{ e.Nombre }</strong>. No se puede deshacer. Si solo no lo tenés
+				hoy, mejor apagalo.
+			</p>
+		</div>
+		<div class="modal-pie pie-fin">
+			@BotonCancelarModal()
+			<button
+				type="button"
+				class="boton boton-peligro"
+				hx-delete={ fmt.Sprintf("/admin/extras/%d", e.ID) }
+				hx-target="#panel-extras"
+				hx-swap="outerHTML"
+			>BORRAR</button>
+		</div>
+	}
+}
+
+func tituloModalExtra(f FormExtra) string {
+	if f.ID != 0 {
+		return "EDITAR EXTRA"
+	}
+	return "NUEVO EXTRA"
+}
+
+// accionExtra es a dónde va el form: el alta o la edición de ese extra.
+func accionExtra(f FormExtra) string {
+	if f.ID != 0 {
+		return fmt.Sprintf("/admin/extras/%d", f.ID)
+	}
+	return "/admin/extras"
+}
+
+// rutaModalExtra vuelve a pedir el modal tal como se abrió (LIMPIAR): vacío para un alta, con los
+// datos guardados para una edición.
+func rutaModalExtra(f FormExtra) string {
+	if f.ID != 0 {
+		return fmt.Sprintf("/admin/extras/%d/editar", f.ID)
+	}
+	return "/admin/extras/nuevo"
+}
+
+// conteo arma "1 extra" / "3 extras".
+func conteo(n int, singular, plural string) string {
+	if n == 1 {
+		return "1 " + singular
+	}
+	return fmt.Sprintf("%d %s", n, plural)
+}

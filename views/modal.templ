@@ -1,0 +1,68 @@
+package views
+
+// RutaCerrarModal devuelve un #modal vacío. Sirve para cualquier modal del panel (productos,
+// extras, pedidos), por eso no cuelga de ninguna sección.
+const RutaCerrarModal = "/admin/modal/cerrar"
+
+// OpcionesModal describe la parte común de los modales del panel.
+type OpcionesModal struct {
+	Titulo    string
+	Subtitulo string // opcional
+	// Alerta es para confirmar algo que no se deshace (role="alertdialog"); Describe es el id del
+	// texto que explica qué pasa, para que un lector de pantalla lo lea junto con el título.
+	Alerta   bool
+	Describe string
+	Chico    bool // el más angosto, para confirmaciones
+	Mediano  bool // para formularios cortos, como el de extras
+}
+
+// Modal es el marco de todos los modales: el fondo, el cuadro y la cabecera con el título y la ✕.
+// Se cierra pidiendo RutaCerrarModal con la ✕, con Esc o con un clic en el fondo (solo en el
+// fondo: por eso el target:.modal-fondo). Lo de adentro (cuerpo y pie) va como children.
+templ Modal(o OpcionesModal) {
+	<div
+		class="modal-fondo"
+		hx-get={ RutaCerrarModal }
+		hx-target="#modal"
+		hx-swap="innerHTML"
+		hx-trigger="click target:.modal-fondo, keyup[key=='Escape'] from:body"
+	>
+		<div
+			class={ "modal", templ.KV("chico", o.Chico), templ.KV("mediano", o.Mediano) }
+			if o.Alerta {
+				role="alertdialog"
+			} else {
+				role="dialog"
+			}
+			aria-modal="true"
+			aria-labelledby="titulo-modal"
+			if o.Describe != "" {
+				aria-describedby={ o.Describe }
+			}
+		>
+			<div class="modal-cabecera">
+				<div>
+					<h2 class="modal-titulo" id="titulo-modal">{ o.Titulo }</h2>
+					if o.Subtitulo != "" {
+						<p class="modal-sub">{ o.Subtitulo }</p>
+					}
+				</div>
+				<button type="button" class="cerrar" aria-label="Cerrar" hx-get={ RutaCerrarModal } hx-target="#modal">
+					@IconoCerrar()
+				</button>
+			</div>
+			{ children... }
+		</div>
+	</div>
+}
+
+// BotonCancelarModal es el CANCELAR del pie: cierra el modal sin guardar nada.
+templ BotonCancelarModal() {
+	<button type="button" class="boton boton-secundario" hx-get={ RutaCerrarModal } hx-target="#modal">CANCELAR</button>
+}
+
+// ModalCerradoOOB vacía el modal desde una respuesta que apunta a otro lado (por ejemplo, el alta
+// exitosa reemplaza el panel de productos y, de paso, cierra el modal).
+templ ModalCerradoOOB() {
+	<div id="modal" hx-swap-oob="innerHTML"></div>
+}

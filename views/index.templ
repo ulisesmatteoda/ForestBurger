@@ -6,7 +6,7 @@ import "forestburger/db/sqlc"
 // modal es nil con el modal cerrado; con un valor, la página sale con el modal ya abierto y esos
 // datos (entrar directo a /admin/productos/nuevo, F5, o un error del alta sin JS).
 templ IndexPage(productos []db.Producto, categoria string, modal *FormProducto) {
-	@Layout("Productos") {
+	@Layout("Productos", SeccionProductos) {
 		<header class="encabezado">
 			<div>
 				<h1>PRODUCTOS</h1>

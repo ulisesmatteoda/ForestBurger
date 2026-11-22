@@ -1,0 +1,18 @@
+package views
+
+// Switch es un interruptor de encendido/apagado: un checkbox de verdad (se manda con el form y se
+// maneja con teclado) con role="switch" y el dibujo del Figma hecho con CSS, sin JS. etiqueta es su
+// nombre para lectores de pantalla. attrs suma lo que haga falta, por ejemplo hx-put para
+// guardarlo apenas se toca.
+templ Switch(nombre string, encendido bool, etiqueta string, attrs templ.Attributes) {
+	<input
+		class="switch"
+		type="checkbox"
+		role="switch"
+		name={ nombre }
+		value="1"
+		checked?={ encendido }
+		aria-label={ etiqueta }
+		{ attrs... }
+	/>
+}

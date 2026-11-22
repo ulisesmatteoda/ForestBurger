@@ -95,12 +95,20 @@ login. La raíz `/` por ahora redirige al panel; más adelante va a ser el menú
 | `POST /logout`                     | Borra la cookie de sesión y redirige (303) a `/login`                    |
 | `GET /admin`                       | Página completa: lista de productos con el modal de alta cerrado. `?categoria=<valor>` filtra la lista (una categoría desconocida muestra todos); con htmx devuelve solo el panel |
 | `GET /admin/productos/nuevo`       | Abre el modal de alta: con htmx devuelve solo el modal; sin htmx, la página con el modal abierto |
-| `GET /admin/productos/nuevo/cerrar`| Responde vacío; htmx lo pone en `#modal` y el modal se cierra             |
+| `GET /admin/modal/cerrar`          | Responde vacío; htmx lo pone en `#modal` y se cierra cualquier modal del panel |
 | `POST /admin/productos`            | Crea un producto; devuelve el panel con todos los productos (el nuevo resaltado) y cierra el modal (OOB). Con error, vuelve al modal con el mensaje |
 | `GET /admin/productos/{id}/editar` | Devuelve la fila del producto en modo edición, con sus datos cargados    |
 | `PUT /admin/productos/{id}`        | Actualiza el producto; devuelve la fila en modo lectura (o en edición con el error) |
 | `GET /admin/productos/{id}`        | Devuelve la fila en modo lectura (botón "Cancelar" de la edición)        |
 | `GET /admin/productos/{id}/borrar` | Abre el modal que pide confirmar el borrado (`?categoria=` es el filtro activo) |
+| `GET /admin/extras`                | Sección Extras: la tabla con el switch Disponible y el modal de alta/edición |
+| `GET /admin/extras/nuevo`          | Abre el modal de alta (con htmx solo el modal; sin htmx, la página con el modal abierto) |
+| `POST /admin/extras`               | Crea un extra; devuelve el panel con el nuevo resaltado y cierra el modal (OOB) |
+| `GET /admin/extras/{id}/editar`    | Abre el mismo modal con los datos del extra                              |
+| `POST /admin/extras/{id}`          | Guarda la edición (va por POST para que el form funcione sin JS)         |
+| `PUT /admin/extras/{id}/disponible`| El switch de la tabla: guarda apenas se toca y devuelve la fila          |
+| `GET /admin/extras/{id}/borrar`    | Modal de confirmación del borrado                                        |
+| `DELETE /admin/extras/{id}`        | Borra el extra; devuelve el panel y cierra el modal                      |
 | `POST /admin/productos/foto-previa` | Valida la foto elegida y devuelve su vista previa (o el error). No guarda nada |
 | `GET /uploads/<archivo>`           | Sirve las fotos de los productos (público: las va a usar el menú). No lista la carpeta |
 | `DELETE /admin/productos/{id}`     | Borra el producto. Con htmx devuelve el panel con el mismo filtro (`?categoria=`) y cierra el modal (OOB); sin htmx, 303 a `/admin` |
@@ -108,7 +116,7 @@ login. La raíz `/` por ahora redirige al panel; más adelante va a ser el menú
 ### Alta de productos (modal)
 
 **+ NUEVO PRODUCTO** pide el modal y lo pone en `<div id="modal">`, al final de la página: el
-modal se ve cuando ese div tiene algo adentro. Se cierra pidiendo `/admin/productos/nuevo/cerrar`,
+modal se ve cuando ese div tiene algo adentro. Se cierra pidiendo `/admin/modal/cerrar`,
 que responde vacío, con la ✕, con **Cancelar**, con Esc o con un clic en el fondo. Todo con
 atributos de htmx, sin JavaScript propio.
 
@@ -150,6 +158,16 @@ Cada producto puede tener una foto (es opcional).
 - **En la tabla:** cada fila muestra una miniatura; sin foto, un recuadro vacío.
 - Si al guardar hay un error, el navegador no deja volver a completar el campo de archivo: el
   mensaje avisa "Volvé a elegir la foto.".
+
+### Extras
+
+Los agregados que el cliente le suma a una hamburguesa (cheddar, panceta, medallón...), en la
+tabla `extra`. Se ven en `/admin/extras` con su precio como "+ $1.000" (se suma por cada unidad).
+
+- **Disponible:** si un día no hay algo, el switch de la fila lo apaga y deja de aparecer en el
+  menú sin borrarlo. Se guarda apenas se toca (`hx-put`), y la fila vuelve atenuada con "No".
+- **Alta y edición** en el mismo modal (nombre, precio y disponible). **Borrar** pide confirmación
+  y recuerda que, si solo falta por hoy, alcanza con apagarlo.
 
 ### Borrar un producto
 

@@ -4,6 +4,7 @@ sql:
     queries:
       - "db/queries.sql"
       - "db/queries/admin.sql"
+      - "db/queries/extra.sql"
     schema: "db/schema.sql"    
     gen:
       go:

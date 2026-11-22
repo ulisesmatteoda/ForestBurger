@@ -21,7 +21,7 @@ templ ProductosPanel(productos []db.Producto, categoria string, nuevoID int32) {
                     @chipFiltro(c.Label, "/admin?categoria="+url.QueryEscape(c.Valor), categoria == c.Valor)
                 }
             </nav>
-            <span class="conteo">{ conteoProductos(len(productos)) }</span>
+            <span class="conteo">{ conteo(len(productos), "producto", "productos") }</span>
         </div>
         @ProductoList(productos, categoria, nuevoID)
     </section>
@@ -243,12 +243,4 @@ func etiquetaCategoria(c string) string {
 		return c
 	}
 	return strings.ToUpper(c[:1]) + c[1:]
-}
-
-// conteoProductos arma el texto del contador: "1 producto" o "N productos".
-func conteoProductos(n int) string {
-	if n == 1 {
-		return "1 producto"
-	}
-	return fmt.Sprintf("%d productos", n)
 }

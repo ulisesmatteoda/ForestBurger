@@ -108,7 +108,7 @@ func setupAPI(t *testing.T) (*http.ServeMux, *sqlc.Queries, *API) {
 		t.Fatalf("no se pudo conectar a la base: %v", err)
 	}
 	// Ajustá el nombre de la tabla si es distinto.
-	if _, err := conn.Exec(`TRUNCATE producto, admin RESTART IDENTITY CASCADE`); err != nil {
+	if _, err := conn.Exec(`TRUNCATE producto, admin, extra RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatalf("no se pudieron limpiar las tablas: %v", err)
 	}
 
@@ -471,7 +471,7 @@ func TestNuevoProducto_SinHTMXDevuelvePaginaConModal(t *testing.T) {
 func TestCerrarModal_DevuelveVacio(t *testing.T) {
 	mux, _ := setup(t)
 
-	rec := pedirPanel(mux, "/admin/productos/nuevo/cerrar", true)
+	rec := pedirPanel(mux, "/admin/modal/cerrar", true)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, quiero 200", rec.Code)
 	}
