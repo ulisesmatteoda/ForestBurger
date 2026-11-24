@@ -68,13 +68,14 @@ templ ModalNuevoProducto(f FormProducto) {
 // ModalConfirmarBorrado pide confirmar antes de borrar, con el estilo del panel (el confirm() del
 // navegador no se puede estilizar). Se cierra igual que el alta. BORRAR reemplaza el panel con el
 // mismo filtro que estaba activo, así el contador y la lista quedan al día, y cierra el modal.
-templ ModalConfirmarBorrado(p db.Producto, categoria string, enCurso int64) {
+templ ModalConfirmarBorrado(p db.Producto, categoria string, enCurso int64, enPromos []string) {
 	@Modal(OpcionesModal{Titulo: "¿BORRAR PRODUCTO?", Alerta: true, Describe: "texto-borrar", Chico: true}) {
 		<div class="modal-cuerpo">
 			<p class="confirmar-texto" id="texto-borrar">
 				Vas a borrar <strong>{ p.Nombre }</strong> del menú. No se puede deshacer.
 			</p>
 			@AvisoPedidosEnCurso(enCurso)
+			@AvisoPromos(enPromos)
 		</div>
 		<div class="modal-pie pie-fin">
 			@BotonCancelarModal()

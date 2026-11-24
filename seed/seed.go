@@ -37,11 +37,28 @@ var productos = []productoSeed{
 	{"Classic", "hamburguesa", "Medallón de 120 gr., pan de batata, doble cheddar, lechuga, cebolla, tomate y salsa Forest.", "14500", "16500"},
 	{"Big Forest", "hamburguesa", "Medallón de 120 gr., pan de batata, doble cheddar, lechuga, cebolla, pepinillos y salsa Forest.", "14500", "16500"},
 	{"Cheese Bacon", "hamburguesa", "Medallón de 120 gr., pan de batata, doble cheddar y doble panceta.", "15500", "17000"},
+	{"Oklahoma", "hamburguesa", "Medallón smash con cebolla planchada, pan de papa y doble cheddar.", "14500", "16500"},
 	{"Not Cheese", "veggie", "Medallón Not Burger, pan de batata y doble queso cheddar.", "14500", "16500"},
+	{"Not Classic", "veggie", "Medallón Not Burger, doble cheddar, lechuga, tomate y salsa Forest.", "15500", "17000"},
 	{"Papas Forest", "acompañamiento", "Papas rústicas con cheddar y verdeo.", "6500", ""},
 	{"Gaseosa lata", "bebida", "Lata de 354 ml.", "3500", ""},
 	{"Gaseosa botella", "bebida", "Botella de 1,5 l.", "5000", ""},
 	{"Agua mineral", "bebida", "Botella de 500 ml.", "2500", ""},
+}
+
+// Las promos del Figma: los productos van por nombre.
+type promoSeed struct {
+	nombre, precio string
+	cantidad       int16
+	tamano         string
+	dias           []int32
+	productos      []string
+	activa         bool
+}
+
+var promosSeed = []promoSeed{
+	{"2 Smash por $26.000", "26000", 2, "simple", []int32{2, 3, 4, 5, 6, 0}, []string{"Big Forest", "Cheese Burger", "Classic", "Oklahoma"}, true},
+	{"Martes veggie", "13000", 1, "doble", []int32{2}, []string{"Not Cheese", "Not Classic"}, false},
 }
 
 type extraSeed struct {
@@ -82,6 +99,9 @@ func DatosPrueba(ctx context.Context, db *sql.DB) (Resultado, error) {
 		return res, err
 	}
 	res.Productos = len(productos)
+	if err := cargarPromos(ctx, q); err != nil {
+		return res, err
+	}
 	extrasDisponibles, err := cargarExtras(ctx, q)
 	if err != nil {
 		return res, err
@@ -124,6 +144,31 @@ func cargarProductos(ctx context.Context, q *sqlc.Queries) (hamburguesas, otros 
 		}
 	}
 	return hamburguesas, otros, nil
+}
+
+func cargarPromos(ctx context.Context, q *sqlc.Queries) error {
+	lista, err := q.ListProductos(ctx)
+	if err != nil {
+		return err
+	}
+	ids := map[string]int32{}
+	for _, p := range lista {
+		ids[p.Nombre] = p.ID
+	}
+	for _, pr := range promosSeed {
+		creada, err := q.CreatePromo(ctx, sqlc.CreatePromoParams{
+			Nombre: pr.nombre, Precio: pr.precio, Cantidad: pr.cantidad, Tamano: pr.tamano, Dias: pr.dias, Activa: pr.activa,
+		})
+		if err != nil {
+			return err
+		}
+		for _, nombre := range pr.productos {
+			if err := q.AddProductoAPromo(ctx, sqlc.AddProductoAPromoParams{PromoID: creada.ID, ProductoID: ids[nombre]}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func cargarExtras(ctx context.Context, q *sqlc.Queries) ([]int32, error) {

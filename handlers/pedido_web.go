@@ -22,10 +22,10 @@ import (
 // acciones de su estado. Las fechas se cuentan con la hora de la Argentina (pedidos.Zona).
 
 const (
-	rangoHoy    = "hoy"
-	rangoAyer   = "ayer"
-	rangoSemana = "semana"
-	rangoMes    = "mes"
+	rangoHoy    = pedidos.RangoHoy
+	rangoAyer   = pedidos.RangoAyer
+	rangoSemana = pedidos.RangoSemana
+	rangoMes    = pedidos.RangoMes
 	formatoDia  = "2006-01-02" // el de los <input type="date">
 )
 
@@ -47,20 +47,26 @@ type filtroPedidos struct {
 // Pedidos: GET /admin/pedidos (?rango=hoy|ayer|semana|mes, o ?desde=…&hasta=…, y ?estado=…)
 // Con htmx (un filtro) devuelve solo el panel; sin htmx, la página.
 func (a *API) Pedidos(w http.ResponseWriter, r *http.Request) {
-	f := leerFiltroPedidos(r.URL.Query(), time.Now())
+	f, err := a.armarFiltro(r.Context(), r.URL.Query(), time.Now())
+	if err != nil {
+		http.Error(w, "No se pudieron cargar los pedidos", http.StatusInternalServerError)
+		return
+	}
 	filas, err := a.filasPedidos(r.Context(), f)
 	if err != nil {
 		http.Error(w, "No se pudieron cargar los pedidos", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if esHTMX(r) {
-		views.PedidosPanel(f.vista, filas, false).Render(r.Context(), w)
-		return
-	}
-	m, err := a.metricasPedidos(r.Context(), time.Now())
+	m, err := a.metricasPedidos(r.Context(), f, time.Now())
 	if err != nil {
 		http.Error(w, "No se pudieron calcular las ventas", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if esHTMX(r) {
+		// Las tarjetas y el gráfico son del mismo período: van por OOB junto con la lista.
+		views.PedidosPanel(f.vista, filas, false).Render(r.Context(), w)
+		views.Metricas(m, true).Render(r.Context(), w)
 		return
 	}
 	views.PedidosPage(fechaLarga(time.Now()), m, f.vista, filas, nil).Render(r.Context(), w)
@@ -204,19 +210,41 @@ func (a *API) responderDetalle(w http.ResponseWriter, r *http.Request, id int32,
 // paginaPedidosCon devuelve la página de Pedidos de hoy con ese modal abierto (para entrar sin
 // htmx: un link directo o F5 sobre el detalle o sobre "Cargar pedido").
 func (a *API) paginaPedidosCon(w http.ResponseWriter, r *http.Request, modal templ.Component) {
-	f := leerFiltroPedidos(url.Values{}, time.Now())
+	f, err := a.armarFiltro(r.Context(), url.Values{}, time.Now())
+	if err != nil {
+		http.Error(w, "No se pudieron cargar los pedidos", http.StatusInternalServerError)
+		return
+	}
 	filas, err := a.filasPedidos(r.Context(), f)
 	if err != nil {
 		http.Error(w, "No se pudieron cargar los pedidos", http.StatusInternalServerError)
 		return
 	}
-	m, err := a.metricasPedidos(r.Context(), time.Now())
+	m, err := a.metricasPedidos(r.Context(), f, time.Now())
 	if err != nil {
 		http.Error(w, "No se pudieron calcular las ventas", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	views.PedidosPage(fechaLarga(time.Now()), m, f.vista, filas, modal).Render(r.Context(), w)
+}
+
+// armarFiltro es leerFiltroPedidos más lo que sale de la base: cuántos pendientes hay en el período,
+// para el chip "Pendientes (2)".
+func (a *API) armarFiltro(ctx context.Context, q url.Values, ahora time.Time) (filtroPedidos, error) {
+	f := leerFiltroPedidos(q, ahora)
+	n, err := a.q.CountPendientesRango(ctx, sqlc.CountPendientesRangoParams{Desde: f.desde, Hasta: f.hasta})
+	if err != nil {
+		return f, err
+	}
+	if n > 0 {
+		for i, c := range f.vista.ChipsEstado {
+			if c.Label == "Pendientes" {
+				f.vista.ChipsEstado[i].Label = fmt.Sprintf("Pendientes (%d)", n)
+			}
+		}
+	}
+	return f, nil
 }
 
 // leerFiltroPedidos interpreta la URL. Un rango desde/hasta válido gana; si no, el rango rápido
@@ -287,46 +315,67 @@ func urlPedidos(v url.Values, estado string) string {
 	return "/admin/pedidos?" + v.Encode()
 }
 
-// metricasPedidos arma las tarjetas y el gráfico de ventas de hoy y de esta semana (una consulta;
-// las cuentas las hace pedidos.Metricas).
-func (a *API) metricasPedidos(ctx context.Context, ahora time.Time) (views.MetricasPedidos, error) {
-	desde, hasta := pedidos.RangoMetricas(ahora)
+// metricasPedidos arma las tarjetas y el gráfico del período del filtro (el mismo de la lista):
+// ventas, pedidos y ticket promedio, con la comparación contra el período anterior. No miran el
+// filtro de estado: las ventas nunca cuentan los cancelados.
+func (a *API) metricasPedidos(ctx context.Context, f filtroPedidos, ahora time.Time) (views.MetricasPedidos, error) {
+	periodo := pedidos.PeriodoPedidos{Desde: f.desde, Hasta: f.hasta, Rango: f.vista.Rango}
+	desde, hasta := pedidos.RangoConsulta(periodo, ahora)
 	filas, err := a.q.VentasPorDia(ctx, sqlc.VentasPorDiaParams{Zona: pedidos.NombreZona, Desde: desde, Hasta: hasta})
 	if err != nil {
 		return views.MetricasPedidos{}, err
 	}
 	ventas := make([]pedidos.VentaDia, len(filas))
-	for i, f := range filas {
-		total, err := pedidos.CentavosDe(f.Total)
+	for i, fila := range filas {
+		total, err := pedidos.CentavosDe(fila.Total)
 		if err != nil {
 			return views.MetricasPedidos{}, err
 		}
-		ventas[i] = pedidos.VentaDia{Dia: f.Dia, Pago: f.Pago, Pedidos: int(f.Pedidos), Total: total}
+		ventas[i] = pedidos.VentaDia{Dia: fila.Dia, Pago: fila.Pago, Pedidos: int(fila.Pedidos), Total: total}
 	}
-	r := pedidos.Metricas(ventas, ahora)
+	cancelados, err := a.q.CountCanceladosRango(ctx, sqlc.CountCanceladosRangoParams{Desde: f.desde, Hasta: f.hasta})
+	if err != nil {
+		return views.MetricasPedidos{}, err
+	}
+	r := pedidos.Metricas(ventas, periodo, ahora)
 
-	domingo := r.Lunes.AddDate(0, 0, 6)
 	m := views.MetricasPedidos{
-		HoyTotal:            r.Hoy.Total.Texto(),
-		HoyDetalle:          conteoPedidos(r.Hoy.Pedidos),
-		HoyEfectivo:         r.Hoy.Efectivo.Texto(),
-		HoyTransferencia:    r.Hoy.Transferencia.Texto(),
-		SemanaTotal:         r.Semana.Total.Texto(),
-		SemanaDetalle:       fmt.Sprintf("%s · lun %d al dom %s", conteoPedidos(r.Semana.Pedidos), r.Lunes.Day(), domingo.Format("02/01")),
-		SemanaEfectivo:      r.Semana.Efectivo.Texto(),
-		SemanaTransferencia: r.Semana.Transferencia.Texto(),
-		SemanaTitulo:        semanaTitulo(r.Lunes, domingo),
+		// "PEDIDOS DE ESTE MES" → "VENTAS DE ESTE MES": el mismo período que la lista.
+		VentasTitulo:        strings.Replace(f.vista.Titulo, "PEDIDOS", "VENTAS", 1),
+		VentasTotal:         r.Actual.Total.Texto(),
+		VentasDetalle:       conteoPedidos(r.Actual.Pedidos),
+		VentasEfectivo:      r.Actual.Efectivo.Texto(),
+		VentasTransferencia: r.Actual.Transferencia.Texto(),
+		PedidosCantidad:     strconv.Itoa(r.Actual.Pedidos),
+		PedidosDetalle:      textoCancelados(int(cancelados)),
+		TicketDetalle:       "Por pedido, " + periodoCorto(f.vista.Rango),
+		GraficoTitulo:       "VENTAS POR DÍA",
+		GraficoSub:          tituloGrafico(f.vista.Rango, r.GraficoDesde, r.GraficoHasta),
+		TotalTitulo:         totalTitulo(f.vista.Rango),
+		GraficoTotal:        r.GraficoTotal.Texto(),
 	}
-	if r.HayVsAyer {
-		m.HoyDetalle += " · " + strings.Replace(fmt.Sprintf("%+.1f%% vs. ayer", r.VsAyer), ".", ",", 1)
+	if r.HayVs {
+		m.VentasDetalle += " · " + strings.Replace(fmt.Sprintf("%+.1f%% %s", r.VsAnterior, r.VsTexto), ".", ",", 1)
 	}
-	if r.Hoy.Pedidos > 0 {
+	if r.Actual.Pedidos > 0 {
 		m.Ticket = r.Ticket.Texto()
 	}
-	for _, d := range r.Dias {
-		b := views.BarraVenta{Dia: diasCortos[d.Fecha.Weekday()], Alto: d.Alto, EsHoy: d.EsHoy}
-		if d.EsHoy {
-			b.Dia += " (hoy)"
+	if r.PorSemana {
+		m.GraficoTitulo = "VENTAS POR SEMANA"
+	}
+	semana := len(r.Barras) == 7 && !r.PorSemana && r.GraficoDesde.Weekday() == time.Monday
+	for _, d := range r.Barras {
+		b := views.BarraVenta{Alto: d.Alto, EsHoy: d.EsHoy}
+		switch {
+		case r.PorSemana:
+			b.Dia = d.Fecha.Format("02/01")
+		case semana:
+			b.Dia = diasCortos[d.Fecha.Weekday()]
+			if d.EsHoy {
+				b.Dia += " (hoy)"
+			}
+		default:
+			b.Dia = strconv.Itoa(d.Fecha.Day())
 		}
 		if !d.Futuro {
 			b.Valor = d.Total.Texto()
@@ -334,6 +383,59 @@ func (a *API) metricasPedidos(ctx context.Context, ahora time.Time) (views.Metri
 		m.Barras = append(m.Barras, b)
 	}
 	return m, nil
+}
+
+// textoCancelados: "2 cancelados", "1 cancelado" o "Ninguno cancelado".
+func textoCancelados(n int) string {
+	switch n {
+	case 0:
+		return "Ninguno cancelado"
+	case 1:
+		return "1 cancelado"
+	}
+	return fmt.Sprintf("%d cancelados", n)
+}
+
+// periodoCorto es el período para "Por pedido, …".
+func periodoCorto(rango string) string {
+	switch rango {
+	case rangoHoy:
+		return "hoy"
+	case rangoAyer:
+		return "ayer"
+	case rangoSemana:
+		return "esta semana"
+	case rangoMes:
+		return "este mes"
+	}
+	return "en el período"
+}
+
+func totalTitulo(rango string) string {
+	switch rango {
+	case rangoHoy, rangoAyer, rangoSemana:
+		return "Total de la semana"
+	case rangoMes:
+		return "Total del mes"
+	}
+	return "Total del período"
+}
+
+// tituloGrafico dice qué días muestra el gráfico: "Semana del 16 al 22 de noviembre",
+// "Noviembre de 2026" o "Del 13/11 al 22/11", siempre aclarando que no cuenta los cancelados.
+func tituloGrafico(rango string, desde, hasta time.Time) string {
+	ultimo := hasta.AddDate(0, 0, -1)
+	var titulo string
+	switch rango {
+	case rangoHoy, rangoAyer, rangoSemana:
+		titulo = semanaTitulo(desde, ultimo)
+	case rangoMes:
+		mes := meses[desde.Month()-1]
+		titulo = fmt.Sprintf("%s%s de %d", strings.ToUpper(mes[:1]), mes[1:], desde.Year())
+	default:
+		titulo = fmt.Sprintf("Del %s al %s", desde.Format("02/01"), ultimo.Format("02/01"))
+	}
+	return titulo + " · no incluye pedidos cancelados"
 }
 
 func conteoPedidos(n int) string {

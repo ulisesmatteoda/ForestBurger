@@ -30,7 +30,7 @@ templ ExtrasPage(extras []db.Extra, modal *FormExtra) {
 				hx-get="/admin/extras/nuevo"
 				hx-target="#modal"
 				hx-swap="innerHTML"
-			>+ NUEVO EXTRA</a>
+			>+ NUEVO <span class="solo-compu">EXTRA</span></a>
 		</header>
 		@ExtrasPanel(extras, 0)
 		<div id="modal">
@@ -53,7 +53,7 @@ templ ExtrasPanel(extras []db.Extra, nuevoID int32) {
 			if len(extras) == 0 {
 				<p class="vacio">Todavía no hay extras. Cargá el primero con + Nuevo extra.</p>
 			} else {
-				<table class="tabla">
+				<table class="tabla tabla-extras">
 					<thead>
 						<tr>
 							<th>EXTRA</th>
@@ -78,9 +78,9 @@ templ ExtrasPanel(extras []db.Extra, nuevoID int32) {
 // no se manda con el form, y eso es justamente "no disponible".
 templ FilaExtra(e db.Extra, nuevo bool) {
 	<tr class={ templ.KV("nuevo", nuevo), templ.KV("apagado", !e.Disponible) }>
-		<td><span class="producto-nombre">{ e.Nombre }</span></td>
-		<td class="precio">+ { formatPrecio(e.Precio) }</td>
-		<td>
+		<td class="col-nombre"><span class="producto-nombre">{ e.Nombre }</span></td>
+		<td class="precio col-precio">+ { formatPrecio(e.Precio) }</td>
+		<td class="col-disponible">
 			<label class="disponible-celda">
 				@Switch("disponible", e.Disponible, "Disponible: "+e.Nombre, templ.Attributes{
 					"hx-put":     fmt.Sprintf("/admin/extras/%d/disponible", e.ID),
@@ -96,7 +96,7 @@ templ FilaExtra(e db.Extra, nuevo bool) {
 				}
 			</label>
 		</td>
-		<td>
+		<td class="col-acciones">
 			<div class="acciones">
 				<button
 					class="boton-icono"

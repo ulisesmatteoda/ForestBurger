@@ -657,7 +657,8 @@ func TestFilaProducto_VuelveAModoLectura(t *testing.T) {
 			t.Errorf("la fila no contiene %q", esperado)
 		}
 	}
-	if strings.Contains(body, "hx-put=") {
+	// El switch de agotado sí tiene su hx-put (a .../disponible); el de Guardar va a la fila.
+	if strings.Contains(body, `hx-put="/admin/productos/`+id+`"`) {
 		t.Error("la fila en modo lectura no debería tener el botón Guardar")
 	}
 }
@@ -816,5 +817,42 @@ func TestActualizarProducto_Errores(t *testing.T) {
 				t.Errorf("el producto no debería haber cambiado: %+v", got)
 			}
 		})
+	}
+}
+
+func TestCambiarDisponibleProducto(t *testing.T) {
+	mux, q := setup(t)
+	p, err := q.CreateProducto(context.Background(), sqlc.CreateProductoParams{Nombre: "Cheese Bacon", Categoria: "hamburguesa", Precio: "15500"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ruta := "/admin/productos/" + idTexto(p.ID) + "/disponible?categoria=hamburguesa"
+
+	// Agotar: el checkbox apagado no viaja. Vuelve solo la fila, con el filtro de la lista en el borrar.
+	body := pedirExtra(mux, http.MethodPut, ruta, url.Values{}, true).Body.String()
+	if !strings.Contains(body, `class="apagado"`) || !strings.Contains(body, "<span>Agotado</span>") || strings.Contains(body, "<table") || !strings.Contains(body, "borrar?categoria=hamburguesa") {
+		t.Errorf("tendría que devolver solo la fila agotada: %s", body)
+	}
+	if got, _ := q.GetProducto(context.Background(), p.ID); got.Disponible {
+		t.Error("no se guardó el agotado")
+	}
+	// En la lista aparece la columna con el switch.
+	if lista := pedirPanel(mux, "/admin", false).Body.String(); !strings.Contains(lista, "<th>DISPONIBLE</th>") || !strings.Contains(lista, `aria-label="Disponible: Cheese Bacon"`) {
+		t.Error("la lista no tiene la columna DISPONIBLE con el switch")
+	}
+
+	// Volver a tenerlo.
+	if body := pedirExtra(mux, http.MethodPut, ruta, url.Values{"disponible": {"1"}}, true).Body.String(); !strings.Contains(body, "<span>Sí</span>") {
+		t.Errorf("tendría que volver disponible: %s", body)
+	}
+	if got, _ := q.GetProducto(context.Background(), p.ID); !got.Disponible {
+		t.Error("no se guardó el disponible")
+	}
+}
+
+func TestCambiarDisponibleProducto_PideSesion(t *testing.T) {
+	mux, _ := setupSinSesion(t)
+	if rec := pedirExtra(mux, http.MethodPut, "/admin/productos/1/disponible", url.Values{}, true); rec.Header().Get("HX-Redirect") != "/login" {
+		t.Error("sin sesión tendría que mandar al login")
 	}
 }

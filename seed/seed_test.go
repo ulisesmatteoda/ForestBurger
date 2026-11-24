@@ -56,3 +56,23 @@ func TestDatosPrueba_CargaUnaSolaVez(t *testing.T) {
 		t.Errorf("hay %d productos, quiero %d (sin duplicar)", n, len(productos))
 	}
 }
+
+// Las promos del Figma, con sus productos: una activa y una pausada.
+func TestDatosPrueba_Promos(t *testing.T) {
+	db := basetest.Abrir(t)
+	t.Setenv("DEV_DATOS_PRUEBA", "1")
+	ctx := context.Background()
+	if _, err := DatosPrueba(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	q := sqlc.New(db)
+	lista, err := q.ListPromos(ctx)
+	if err != nil || len(lista) != 2 || !lista[0].Activa || lista[1].Activa {
+		t.Fatalf("promos = %+v, %v; quiero 2 (la primera activa, la segunda pausada)", lista, err)
+	}
+	for i, quiero := range []int{4, 2} {
+		if ids, _ := q.ListProductosDePromo(ctx, lista[i].ID); len(ids) != quiero {
+			t.Errorf("%s tiene %d productos, quiero %d", lista[i].Nombre, len(ids), quiero)
+		}
+	}
+}

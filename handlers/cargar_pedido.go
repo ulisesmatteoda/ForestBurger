@@ -112,13 +112,17 @@ func (a *API) GuardarPedido(w http.ResponseWriter, r *http.Request) {
 	if pagina, err := url.Parse(r.Header.Get("HX-Current-URL")); err == nil {
 		filtro = pagina.Query()
 	}
-	f := leerFiltroPedidos(filtro, time.Now())
+	f, err := a.armarFiltro(r.Context(), filtro, time.Now())
+	if err != nil {
+		http.Error(w, "No se pudieron cargar los pedidos", http.StatusInternalServerError)
+		return
+	}
 	filas, err := a.filasPedidos(r.Context(), f)
 	if err != nil {
 		http.Error(w, "No se pudieron cargar los pedidos", http.StatusInternalServerError)
 		return
 	}
-	m, err := a.metricasPedidos(r.Context(), time.Now())
+	m, err := a.metricasPedidos(r.Context(), f, time.Now())
 	if err != nil {
 		http.Error(w, "No se pudieron calcular las ventas", http.StatusInternalServerError)
 		return
@@ -289,7 +293,7 @@ func (a *API) vistaCarga(ctx context.Context, c carga, msg string) (views.CargaP
 		if p.Categoria != c.categoria {
 			continue
 		}
-		pc := views.ProductoCarga{ID: p.ID, Nombre: p.Nombre, Simple: p.Precio}
+		pc := views.ProductoCarga{ID: p.ID, Nombre: p.Nombre, Simple: p.Precio, Agotado: !p.Disponible}
 		if p.PrecioDoble.Valid {
 			pc.Doble = p.PrecioDoble.String
 		}

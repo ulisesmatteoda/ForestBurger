@@ -2,6 +2,7 @@ package views
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -49,12 +50,45 @@ func TestBarraLateral_SeccionesYActiva(t *testing.T) {
 
 func TestMetricas_AltoDeLasBarras(t *testing.T) {
 	html := render(t, Metricas(MetricasPedidos{
-		HoyTotal: "412500.00", SemanaTotal: "1774000.00", Ticket: "22917.00",
+		VentasTitulo: "VENTAS DE HOY", VentasTotal: "412500.00", GraficoTotal: "1774000.00", Ticket: "22917.00",
 		Barras: []BarraVenta{{Dia: "Lun", Valor: "198000.00", Alto: 48}, {Dia: "Sáb (hoy)", Valor: "412500.00", Alto: 100, EsHoy: true}, {Dia: "Dom"}},
 	}, false))
-	for _, esperado := range []string{`style="--alto: 48;"`, `style="--alto: 100;"`, `class="barra-dia hoy"`, "$412.500", "$22.917", "Sáb (hoy)"} {
+	for _, esperado := range []string{
+		`style="--alto: 48;"`, `style="--alto: 100;"`, `class="barra-dia hoy"`, "$412.500", "$22.917", "Sáb (hoy)",
+		`class="barras" style="--columnas: 3;"`, `title="Lun: $198.000"`,
+	} {
 		if !strings.Contains(html, esperado) {
 			t.Errorf("el gráfico no contiene %q: %s", esperado, html)
+		}
+	}
+}
+
+// Con más de 10 barras (un mes) el monto de cada una no entra: la clase muchas lo oculta.
+func TestMetricas_MuchasBarras(t *testing.T) {
+	barras := make([]BarraVenta, 30)
+	for i := range barras {
+		barras[i] = BarraVenta{Dia: fmt.Sprint(i + 1), Valor: "1000.00", Alto: 10}
+	}
+	html := render(t, Metricas(MetricasPedidos{Barras: barras}, false))
+	if !strings.Contains(html, `class="barras muchas" style="--columnas: 30;"`) {
+		t.Errorf("un mes tendría que ir con 30 columnas y la clase muchas")
+	}
+}
+
+// El panel se puede instalar como app: el manifest, los íconos y las metas del iPhone van en todas
+// las páginas (también en el login, que es donde cae la app si la sesión venció).
+func TestDocumento_MetasDeLaPWA(t *testing.T) {
+	var b strings.Builder
+	if err := Documento("Ingresar").Render(context.Background(), &b); err != nil {
+		t.Fatal(err)
+	}
+	for _, esperado := range []string{
+		`<link rel="manifest" href="/static/manifest.json">`, `<meta name="theme-color" content="#023320">`,
+		`<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">`, `<meta name="apple-mobile-web-app-capable" content="yes">`,
+		"viewport-fit=cover",
+	} {
+		if !strings.Contains(b.String(), esperado) {
+			t.Errorf("falta %q", esperado)
 		}
 	}
 }

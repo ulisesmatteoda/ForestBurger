@@ -53,13 +53,14 @@ templ ProductoList(productos []db.Producto, categoria string, nuevoID int32) {
         } else if len(productos) == 0 {
             <p class="vacio">Todavía no hay productos. Cargá el primero con + Nuevo producto.</p>
         } else {
-            <table class="tabla">
+            <table class="tabla tabla-productos">
                 <thead>
                     <tr>
                         <th>PRODUCTO</th>
                         <th>CATEGORÍA</th>
                         <th>PRECIO</th>
                         <th>PRECIO DOBLE</th>
+                        <th>DISPONIBLE</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -82,8 +83,9 @@ templ ProductoFila(p db.Producto, categoria string) {
 
 // filaProducto es la fila en modo lectura; nuevo la resalta (el producto recién creado).
 templ filaProducto(p db.Producto, nuevo bool, categoria string) {
-    <tr class={ templ.KV("nuevo", nuevo) }>
-        <td>
+    <tr class={ templ.KV("nuevo", nuevo), templ.KV("apagado", !p.Disponible) }>
+        // Las clases col-* ubican cada celda en la tarjeta del celu (ver styles.css).
+        <td class="col-nombre">
             <div class="producto-celda">
                 @Miniatura(p.ImagenUrl.String)
                 <div>
@@ -94,16 +96,33 @@ templ filaProducto(p db.Producto, nuevo bool, categoria string) {
                 </div>
             </div>
         </td>
-        <td><span class="tag">{ etiquetaCategoria(p.Categoria) }</span></td>
-        <td class="precio">{ formatPrecio(p.Precio) }</td>
-        <td class="precio">
+        <td class="col-categoria"><span class="tag">{ etiquetaCategoria(p.Categoria) }</span></td>
+        <td class="precio col-precio">{ formatPrecio(p.Precio) }</td>
+        <td class={ "precio", "col-doble", templ.KV("sin-doble", !p.PrecioDoble.Valid) }>
             if p.PrecioDoble.Valid {
                 { formatPrecio(p.PrecioDoble.String) }
             } else {
                 —
             }
         </td>
-        <td>
+        <td class="col-disponible">
+            // El switch guarda apenas se toca y el servidor devuelve la fila (como en Extras).
+            <label class="disponible-celda">
+                @Switch("disponible", p.Disponible, "Disponible: "+p.Nombre, templ.Attributes{
+                    "hx-put":     fmt.Sprintf("/admin/productos/%d/disponible?categoria=%s", p.ID, url.QueryEscape(categoria)),
+                    "hx-trigger": "change",
+                    "hx-include": "this",
+                    "hx-target":  "closest tr",
+                    "hx-swap":    "outerHTML",
+                })
+                if p.Disponible {
+                    <span>Sí</span>
+                } else {
+                    <span>Agotado</span>
+                }
+            </label>
+        </td>
+        <td class="col-acciones">
             <div class="acciones">
                 <button
                     class="boton-icono"
@@ -180,6 +199,8 @@ templ ProductoFilaEditar(id int32, f FormProducto, foto string) {
                 <input class="input-fila" type="number" inputmode="decimal" name="precio_doble" min="0" step="0.01" value={ f.PrecioDoble } aria-label="Precio doble"/>
             </div>
         </td>
+        // Disponible no se edita acá: tiene su switch en la fila de lectura.
+        <td></td>
         <td>
             <div class="acciones">
                 <button

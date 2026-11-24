@@ -42,6 +42,17 @@ func (a *API) RutasAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/productos/{id}/editar", a.FormEditarProducto)
 	mux.HandleFunc("GET /admin/productos/{id}/borrar", a.ConfirmarBorrado)
 	mux.HandleFunc("PUT /admin/productos/{id}", a.ActualizarProducto)
+	mux.HandleFunc("PUT /admin/productos/{id}/disponible", a.CambiarDisponibleProducto)
+
+	mux.HandleFunc("GET /admin/promos", a.Promos)
+	mux.HandleFunc("GET /admin/promos/nueva", a.NuevaPromo)
+	mux.HandleFunc("POST /admin/promos/vista", a.VistaPromo)
+	mux.HandleFunc("POST /admin/promos", a.CrearPromo)
+	mux.HandleFunc("GET /admin/promos/{id}/editar", a.EditarPromo)
+	mux.HandleFunc("POST /admin/promos/{id}", a.ActualizarPromo)
+	mux.HandleFunc("PUT /admin/promos/{id}/activa", a.CambiarActivaPromo)
+	mux.HandleFunc("GET /admin/promos/{id}/borrar", a.ConfirmarBorrarPromo)
+	mux.HandleFunc("DELETE /admin/promos/{id}", a.BorrarPromo)
 	mux.HandleFunc("DELETE /admin/productos/{id}", a.BorrarProducto)
 
 	mux.HandleFunc("GET /admin/extras", a.Extras)

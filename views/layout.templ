@@ -15,8 +15,19 @@ templ Documento(titulo string) {
 	<html lang="es">
 		<head>
 			<meta charset="utf-8"/>
-			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			// viewport-fit=cover: en la app instalada del iPhone la barra de abajo respeta el borde.
+			<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 			<title>{ tituloPagina(ctx, titulo) }</title>
+			// Para instalar el panel como app (PWA), sin service worker: el manifest, los íconos y,
+			// para el iPhone (Safari no usa todo el manifest), sus metas.
+			<link rel="manifest" href="/static/manifest.json"/>
+			<meta name="theme-color" content="#023320"/>
+			<link rel="icon" type="image/png" href="/static/icons/icon-192.png"/>
+			<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
+			<meta name="mobile-web-app-capable" content="yes"/>
+			<meta name="apple-mobile-web-app-capable" content="yes"/>
+			<meta name="apple-mobile-web-app-title" content="ForestBurger"/>
+			<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 			<script src="https://unpkg.com/htmx.org@1.9.10"></script>
 			<link rel="preconnect" href="https://fonts.googleapis.com"/>
 			<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Semi+Condensed:wght@700;800&display=swap" rel="stylesheet"/>
@@ -32,10 +43,24 @@ templ Documento(titulo string) {
 // apagadas, con "Pronto", para que se vea lo que viene sin dejar links que dan 404.
 const (
 	SeccionProductos = "productos"
+	SeccionPromos    = "promos"
 	SeccionExtras    = "extras"
 	SeccionPedidos   = "pedidos"
 	SeccionAjustes   = "ajustes"
 )
+
+// pestanasCelu es la barra de abajo del celu, en el orden del Figma (Pedidos primero: es lo que
+// más se usa en el local).
+var pestanasCelu = []struct {
+	Clave, Label, Ruta string
+	Icono              templ.Component
+}{
+	{SeccionPedidos, "Pedidos", "/admin/pedidos", IconoPedidos()},
+	{SeccionProductos, "Productos", "/admin", IconoHamburguesa()},
+	{SeccionPromos, "Promos", "/admin/promos", IconoEtiqueta()},
+	{SeccionExtras, "Extras", "/admin/extras", IconoMas()},
+	{SeccionAjustes, "Ajustes", "/admin/ajustes", IconoAjustes()},
+}
 
 type seccionPanel struct {
 	Clave, Label, Ruta string
@@ -44,6 +69,7 @@ type seccionPanel struct {
 
 var seccionesPanel = []seccionPanel{
 	{SeccionProductos, "Productos", "/admin", true},
+	{SeccionPromos, "Promos", "/admin/promos", true},
 	{SeccionExtras, "Extras", "/admin/extras", true},
 	{SeccionPedidos, "Pedidos", "/admin/pedidos", true},
 	{SeccionAjustes, "Ajustes", "/admin/ajustes", true},
@@ -55,6 +81,17 @@ var seccionesPanel = []seccionPanel{
 templ Layout(titulo, seccion string) {
 	@Documento(titulo) {
 		<div class="app">
+			// En el celu (CSS, menos de 800 px) la barra lateral se oculta y quedan esta barra de
+			// arriba y la de pestañas de abajo. Es el mismo HTML para la compu y el celu.
+			<header class="topbar">
+				<a href="/admin/pedidos" class="topbar-marca">
+					<img src="/static/img/pinos.svg" alt="" width="30" height="33"/>
+					<span>FORESTBURGER</span>
+				</a>
+				if abierto, ok := localAbiertoDe(ctx); ok {
+					@LocalEstado(abierto)
+				}
+			</header>
 			<aside class="sidebar">
 				<div class="sidebar-marca">
 					@Logo()
@@ -94,6 +131,20 @@ templ Layout(titulo, seccion string) {
 				}
 				{ children... }
 			</main>
+			<nav class="tabbar" aria-label="Secciones del panel">
+				for _, s := range pestanasCelu {
+					<a
+						href={ templ.URL(s.Ruta) }
+						class={ "tab", templ.KV("activo", s.Clave == seccion) }
+						if s.Clave == seccion {
+							aria-current="page"
+						}
+					>
+						@s.Icono
+						<span>{ s.Label }</span>
+					</a>
+				}
+			</nav>
 		</div>
 		// Lo que htmx no puede hacer (copiar al portapapeles). Solo en el panel.
 		<script src={ "/static/panel.js?v=" + VersionPanelJS } defer></script>

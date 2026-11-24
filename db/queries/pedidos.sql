@@ -100,3 +100,13 @@ FROM pedido
 WHERE creado_en >= sqlc.arg(desde) AND creado_en < sqlc.arg(hasta) AND estado <> 'cancelado'
 GROUP BY 1, 2
 ORDER BY 1, 2;
+
+-- name: CountCanceladosRango :one
+-- Para la tarjeta "Pedidos": cuántos se cancelaron o rechazaron en el período.
+SELECT count(*) FROM pedido
+WHERE creado_en >= sqlc.arg(desde) AND creado_en < sqlc.arg(hasta) AND estado = 'cancelado';
+
+-- name: CountPendientesRango :one
+-- Para el chip "Pendientes (2)": cuántos esperan confirmación en el período.
+SELECT count(*) FROM pedido
+WHERE creado_en >= sqlc.arg(desde) AND creado_en < sqlc.arg(hasta) AND estado = 'pendiente';

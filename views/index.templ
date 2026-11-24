@@ -18,7 +18,7 @@ templ IndexPage(productos []db.Producto, categoria string, modal *FormProducto) 
 				hx-get="/admin/productos/nuevo"
 				hx-target="#modal"
 				hx-swap="innerHTML"
-			>+ NUEVO PRODUCTO</a>
+			>+ NUEVO <span class="solo-compu">PRODUCTO</span></a>
 		</header>
 		@ProductosPanel(productos, categoria, 0)
 		<div id="modal">

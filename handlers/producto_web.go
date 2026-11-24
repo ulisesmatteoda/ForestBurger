@@ -273,8 +273,13 @@ func (a *API) ConfirmarBorrado(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "No se pudo revisar los pedidos", http.StatusInternalServerError)
 		return
 	}
+	enPromos, err := a.q.ListPromosConProducto(r.Context(), p.ID)
+	if err != nil {
+		http.Error(w, "No se pudo revisar las promos", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	views.ModalConfirmarBorrado(p, categoriaActual(r), enCurso).Render(r.Context(), w)
+	views.ModalConfirmarBorrado(p, categoriaActual(r), enCurso, enPromos).Render(r.Context(), w)
 }
 
 // BorrarProducto: DELETE /admin/productos/{id}?categoria=<filtro>
@@ -417,6 +422,32 @@ func (a *API) renderIndex(w http.ResponseWriter, r *http.Request, categoria stri
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	views.IndexPage(productos, categoria, modal).Render(r.Context(), w)
+}
+
+// CambiarDisponibleProducto: PUT /admin/productos/{id}/disponible
+// El switch de agotado de la lista. Guarda apenas se toca y devuelve la fila. Un checkbox apagado
+// no viaja con el form, y eso es justamente "agotado".
+func (a *API) CambiarDisponibleProducto(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		http.Error(w, "id inválido", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Formulario inválido", http.StatusBadRequest)
+		return
+	}
+	p, err := a.q.UpdateDisponibleProducto(r.Context(), sqlc.UpdateDisponibleProductoParams{ID: id, Disponible: r.FormValue("disponible") == "1"})
+	if errors.Is(err, sql.ErrNoRows) {
+		noEncontrado(w, "producto")
+		return
+	}
+	if err != nil {
+		http.Error(w, "No se pudo guardar", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	views.ProductoFila(p, categoriaActual(r)).Render(r.Context(), w)
 }
 
 // categoriaActual es el filtro activo de la lista: el de ?categoria=, o si el pedido no lo trae

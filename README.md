@@ -116,6 +116,16 @@ login. La raíz `/` por ahora redirige al panel; más adelante va a ser el menú
 | `POST /admin/productos`            | Crea un producto; devuelve el panel con todos los productos (el nuevo resaltado) y cierra el modal (OOB). Con error, vuelve al modal con el mensaje |
 | `GET /admin/productos/{id}/editar` | Devuelve la fila del producto en modo edición, con sus datos cargados    |
 | `PUT /admin/productos/{id}`        | Actualiza el producto; devuelve la fila en modo lectura (o en edición con el error) |
+| `PUT /admin/productos/{id}/disponible` | El switch de agotado de la lista; devuelve la fila              |
+| `GET /admin/promos`                | Sección Promos: las tarjetas                                             |
+| `GET /admin/promos/nueva`          | Modal "Nueva promo" (sin htmx, la página con el modal abierto)           |
+| `GET /admin/promos/{id}/editar`    | El mismo modal, con la promo guardada                                     |
+| `POST /admin/promos/vista`         | Recalcula el modal mientras se arma (vista previa y cuentas). No guarda nada |
+| `POST /admin/promos`               | Guarda una promo nueva (multipart, con la foto opcional); devuelve las tarjetas |
+| `POST /admin/promos/{id}`          | Guarda la edición                                                         |
+| `PUT /admin/promos/{id}/activa`    | El switch Activa / Pausada de la tarjeta; devuelve la tarjeta             |
+| `GET /admin/promos/{id}/borrar`    | Confirmación de borrado                                                   |
+| `DELETE /admin/promos/{id}`        | Borra la promo y su foto; devuelve las tarjetas y cierra el modal         |
 | `GET /admin/productos/{id}`        | Devuelve la fila en modo lectura (botón "Cancelar" de la edición)        |
 | `GET /admin/productos/{id}/borrar` | Abre el modal que pide confirmar el borrado (`?categoria=` es el filtro activo) |
 | `GET /admin/extras`                | Sección Extras: la tabla con el switch Disponible y el modal de alta/edición |
@@ -234,6 +244,104 @@ reglas que el alta; si hay un error se muestra en la misma fila y no se pierde l
 Dejar vacío el precio doble o la descripción los borra. **Cancelar** vuelve a la fila original.
 Si el producto ya no existe (por ejemplo, lo borraron desde otra pestaña), la página se recarga.
 
+### Promos
+
+Una promo es "elegí **N** hamburguesas entre estas, de este tamaño, por **$X**": el cliente arma
+la suya. Se guarda en `promo` (nombre, precio, cantidad, tamaño, días, foto y si está activa) y
+en `promo_producto`, la tabla intermedia (N a M) con los productos que entran.
+
+- **Las tarjetas** muestran la foto, el nombre, el precio, qué se elige ("Elegí 2 hamburguesas
+  simples entre:" y los productos), los días ("Martes a domingo", "Solo martes", "Lun, Mié y
+  Vie") y cuánto ahorra el cliente. El switch la **pausa** sin borrarla: deja de verse en el
+  menú.
+- **El modal "Nueva promo"** tiene el formulario a la izquierda:
+  - foto opcional;
+  - nombre y precio;
+  - cuántas elige el cliente (− n +);
+  - tamaño: Simples, Dobles o El cliente elige;
+  - los productos que entran (hamburguesas y veggies, con "Marcar todas");
+  - los días.
+
+  A la derecha, **"Así lo ve el cliente"** y **las cuentas**.
+- **Las cuentas comparan la promo con pedir lo mismo por separado**, a precio de menú. Como el
+  cliente puede repetir, se calcula así:
+  - lo más barato es N veces la hamburguesa más barata, y lo más caro, N veces la más cara;
+  - con "El cliente elige", las baratas se cuentan en simple y las caras en doble.
+  - El "ahorro hasta" es lo más caro menos el precio de la promo.
+  - Si la promo sale más cara que todo eso, avisa.
+  - Las hace el paquete `promos`, con los precios de la base. Los de las tarjetas son los de
+    hoy: si cambia un precio del menú, cambia el ahorro.
+- **En vivo sin JS**, igual que en Cargar pedido:
+  - cada cambio pide `/admin/promos/vista`;
+  - htmx reemplaza solo la parte que cambió (`hx-select`/`hx-select-oob`): la vista previa,
+    el stepper, la lista o el contador;
+  - así no se pierden el foco, el scroll ni la foto elegida.
+  - Esos pedidos van urlencoded y la foto viaja recién al guardar (multipart).
+- **Con "Dobles"**, los productos sin precio doble aparecen como "sin doble" y no se pueden
+  marcar.
+- **Borrar un producto** que está en una promo activa avisa ("Está en la promo 2 Smash"). Al
+  borrarlo sale de la promo (`ON DELETE CASCADE`).
+- Por ahora es solo el ABM del panel. Pedir una promo llega con el menú público.
+
+### Producto agotado
+
+La columna **DISPONIBLE** tiene un switch por producto: apagado es **agotado**. Se guarda apenas
+se toca (`producto.disponible`), igual que el de Extras, y la fila queda atenuada.
+
+- En **Cargar pedido** el agotado se ve, pero con la etiqueta "Agotado" en lugar de los botones.
+- `pedidos.Crear` rechaza un pedido con un agotado ("Cheese Bacon está agotado"), por si llega
+  igual desde un form viejo.
+- El menú público lo va a usar después.
+
+## El panel en el celu
+
+Con menos de 800 px de ancho, el panel se acomoda como en los frames "Celu ·" del Figma. Es **el
+mismo HTML** que en la compu: lo cambia el CSS (`@media (max-width: 800px)` al final de
+`static/styles.css`), así que los swaps de htmx (una fila, el panel, el OOB) andan igual.
+
+- **Barras:** la barra lateral se oculta. Arriba queda la marca con el switch "Local abierto", y
+  abajo las pestañas Pedidos, Productos, Promos, Extras y Ajustes. "Salir" va al final de
+  Ajustes.
+- **Las tablas pasan a ser tarjetas.** Cada celda tiene una clase `col-*` y se ubica con
+  `grid-template-areas`. En Pedidos, toda la tarjeta abre el detalle: la flecha se estira,
+  invisible, sobre la tarjeta.
+- **Los modales pasan a ser hojas** a pantalla completa, con el pie (los botones) siempre a la
+  vista. En Nueva promo, los productos van como chips.
+- **Pedidos** muestra lo del Figma: las ventas y la cantidad de hoy, los chips de estado
+  (con "Pendientes (2)") y las tarjetas. El gráfico y el filtro de fechas quedan para la compu.
+- Los chips se deslizan de costado. Los botones dicen "+ NUEVO" o "+ CARGAR".
+- **Nada puede ser más ancho que la pantalla**, porque si no el celu achica toda la página. Los
+  horarios de Ajustes se compactan y las filas de chips no hacen `wrap`.
+
+Se probó con el Chromium de Playwright en 390×844, pantalla por pantalla, contra el Figma.
+
+## Instalar el panel como app (PWA)
+
+El panel se puede instalar en el celu (y en la compu) y abre como una app, a pantalla completa y
+sin la barra del navegador. **No usa service worker** (sería JavaScript): alcanza con el
+`static/manifest.json`, los íconos de `static/icons/` y las metas del `<head>` de `Documento`.
+
+| Dónde | Cómo |
+|---|---|
+| Android (Chrome) | Menú ⋮ → **Instalar app** |
+| iPhone (Safari) | Compartir → **Agregar a inicio** |
+| Compu (Chrome o Edge) | El ícono de instalar en la barra de direcciones |
+
+- **Hace falta HTTPS.** En la compu, `localhost` cuenta como seguro. Desde el celu, por la IP
+  de la red (`http://192.168…`), no se instala: queda como un acceso directo común. Para
+  probarlo antes de tenerlo en producción hay que usar un túnel HTTPS, por ejemplo
+  `cloudflared tunnel --url http://localhost:8080`.
+- **Sin internet no abre.** Sin service worker no hay nada guardado. Igual, el panel no sirve
+  sin el servidor.
+- La sesión dura 7 días, como en el navegador. Cuando vence, la app abre en el login.
+- **Los íconos** son los pinos del logo (`static/img/logoForestburger.svg`) sobre el verde del
+  panel. Los hice una vez con el Chromium de Playwright, porque no hay ImageMagick:
+  - `icon-192` e `icon-512` son los comunes;
+  - `maskable-512` tiene más margen, porque Android lo recorta en círculo;
+  - `apple-touch-icon` es el del iPhone.
+- **Verificado** con la herramienta de Chrome que decide si ofrece "Instalar"
+  (`Page.getInstallabilityErrors`): no da ningún error.
+
 ## Admins
 
 Solo el personal del local va a poder entrar a `/admin`. **No hay registro público**, a
@@ -287,11 +395,25 @@ pedido solo manda qué productos y extras, y cuántos.
 
 ### Atender pedidos (`/admin/pedidos`)
 
-- **Arriba, las ventas** de hoy y de esta semana (lunes a domingo), siempre, sin importar el
-  filtro de la lista: ventas de hoy (con el % contra ayer), ventas de la semana y ticket
-  promedio, cada una con cuánto entró en **efectivo** y cuánto por **transferencia**. Debajo, el
-  gráfico "Ventas por día" de la semana (barras hechas con CSS, sin librerías). No cuentan los
-  pedidos cancelados. Sale de una sola consulta (`VentasPorDia`) y las cuentas las hace
+- **Arriba, las ventas del período que se está mirando**, el mismo de la lista (Hoy, Ayer, Esta
+  semana, Este mes o Desde/Hasta). No las cambia el filtro de estado. Hay tres tarjetas:
+  - **Ventas:** el total, cuánto entró en efectivo y cuánto por transferencia, y el % contra el
+    período anterior;
+  - **Pedidos:** la cantidad, con los cancelados aparte;
+  - **Ticket promedio.**
+- **La comparación es justa con los períodos en curso:**
+  - hoy contra ayer;
+  - esta semana, del lunes a hoy contra del lunes al mismo día de la semana pasada;
+  - este mes, del 1 a hoy contra del 1 al mismo día del mes pasado;
+  - un rango a mano, contra el tramo anterior del mismo largo.
+- **Debajo, el gráfico** (barras hechas con CSS, sin librerías):
+  - la semana de lunes a domingo si se mira un solo día o una semana;
+  - un día por barra en el mes o en un rango de hasta 31 días;
+  - una barra por semana en un rango más largo.
+  - Con muchas barras, el monto se ve al pasar el mouse.
+- Al cambiar el filtro, htmx trae la lista y, por OOB, las tarjetas y el gráfico.
+- No cuentan los pedidos cancelados. Sale de una sola consulta (`VentasPorDia`, que cubre el
+  período, el anterior y el gráfico) más el conteo de cancelados. Las cuentas las hace
   `pedidos.Metricas`.
 - **La lista** se filtra por fecha (Hoy, Ayer, Esta semana de lunes a domingo, Este mes, o un
   rango Desde/Hasta) y por estado. Todo va en la URL, como los filtros de Productos. Cada fila

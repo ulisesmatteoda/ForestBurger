@@ -1,0 +1,427 @@
+package views
+
+import "fmt"
+
+// RutaVistaPromo recalcula el modal mientras se arma la promo (la vista previa y las cuentas).
+const RutaVistaPromo = "/admin/promos/vista"
+
+// PromoTarjeta es lo que muestra la tarjeta de una promo en la grilla.
+type PromoTarjeta struct {
+	ID         int32
+	Nombre     string
+	Precio     string // como lo da la base: "26000.00"
+	Foto       string // "" si no tiene
+	Encabezado string // "Elegí 2 hamburguesas simples entre:"
+	Productos  []string
+	Dias       string // "Martes a domingo"
+	Ahorro     string // "3000.00"; "" si no ahorra nada
+	Activa     bool
+}
+
+// FormPromo son los datos del modal de alta y edición. ID en 0 es un alta.
+type FormPromo struct {
+	ID         int32
+	Nombre     string
+	Precio     string
+	Cantidad   int
+	Tamano     string  // simple, doble o cliente
+	Dias       [7]bool // por número de día: 0 = domingo … 6 = sábado
+	Elegibles  []ElegiblePromo
+	Foto       string // la foto guardada (edición); "" si no tiene
+	QuitarFoto bool
+	Error      string
+	Vista      VistaPromo
+}
+
+// ElegiblePromo es una fila de "Qué productos entran".
+type ElegiblePromo struct {
+	ID          int32
+	Nombre      string
+	Grupo       string // HAMBURGUESAS o VEGGIE
+	PorSeparado string // "14500.00": el precio en el tamaño de la promo
+	Marcado     bool
+	SinDoble    bool // la promo es de dobles y este no tiene: no se puede marcar
+}
+
+// VistaPromo es la columna derecha: cómo la ve el cliente y las cuentas.
+type VistaPromo struct {
+	Nombre      string
+	Precio      string // "" si todavía no hay precio válido
+	Descripcion string
+	Foto        string
+	HayCuentas  bool
+	Min, Max    string
+	Ahorro      string // "3000.00" si ahorra; "" si no
+	MasCara     bool
+}
+
+// Los días en el orden de los chips (lunes primero), con su número de día.
+var diasPromo = []struct {
+	N     int
+	Letra string
+	Nombre string
+}{{1, "L", "Lunes"}, {2, "M", "Martes"}, {3, "M", "Miércoles"}, {4, "J", "Jueves"}, {5, "V", "Viernes"}, {6, "S", "Sábado"}, {0, "D", "Domingo"}}
+
+var tamanosPromo = []CategoriaCarga{{"simple", "Simples"}, {"doble", "Dobles"}, {"cliente", "El cliente elige"}}
+
+// PromosPage es la sección Promos: las tarjetas y el lugar del modal (abierto si modal no es nil:
+// link directo, F5 o un error sin JS).
+templ PromosPage(tarjetas []PromoTarjeta, modal templ.Component) {
+	@Layout("Promos", SeccionPromos) {
+		<header class="encabezado">
+			<div>
+				<h1>PROMOS</h1>
+				<p class="subtitulo">El cliente elige entre los productos que marques, en el tamaño que digas.</p>
+			</div>
+			<a href="/admin/promos/nueva" class="boton boton-primario" hx-get="/admin/promos/nueva" hx-target="#modal" hx-swap="innerHTML">+ NUEVA <span class="solo-compu">PROMO</span></a>
+		</header>
+		@PromosPanel(tarjetas, 0)
+		<div id="modal">
+			if modal != nil {
+				@modal
+			}
+		</div>
+	}
+}
+
+// PromosPanel es la nota, el contador y la grilla. Es lo que reemplaza htmx al guardar o borrar.
+// nuevoID es la promo recién guardada, que sale resaltada.
+templ PromosPanel(tarjetas []PromoTarjeta, nuevoID int32) {
+	<section id="panel-promos">
+		<div class="barra">
+			<p class="nota">Pausala en vez de borrarla si es por un tiempo: deja de verse en el menú.</p>
+			<span class="conteo">{ conteo(len(tarjetas), "promo", "promos") }</span>
+		</div>
+		if len(tarjetas) == 0 {
+			<p class="vacio tabla-contenedor">Todavía no hay promos. Armá la primera con + Nueva promo.</p>
+		} else {
+			<div class="promos">
+				for _, t := range tarjetas {
+					@TarjetaPromo(t, t.ID == nuevoID)
+				}
+			</div>
+		}
+	</section>
+}
+
+// TarjetaPromo es una promo de la grilla. El switch guarda apenas se toca y el servidor devuelve
+// la tarjeta de nuevo (como las filas de Extras).
+templ TarjetaPromo(t PromoTarjeta, nueva bool) {
+	<article class={ "promo-tarjeta", templ.KV("nuevo", nueva), templ.KV("apagado", !t.Activa) }>
+		<div class="promo-foto">
+			if t.Foto != "" {
+				<img src={ templ.URL(t.Foto) } alt="" loading="lazy"/>
+			} else {
+				<span>Sin foto</span>
+			}
+		</div>
+		<div class="promo-cuerpo">
+			<div class="promo-cabecera">
+				<h2 class="promo-nombre">{ t.Nombre }</h2>
+				<span class="promo-precio">{ formatPrecio(t.Precio) }</span>
+			</div>
+			<p class="promo-texto">{ t.Encabezado }</p>
+			<div class="promo-tags">
+				for _, p := range t.Productos {
+					<span class="tag">{ p }</span>
+				}
+			</div>
+			<p class="promo-dias">{ t.Dias }</p>
+			if t.Ahorro != "" {
+				<p class="promo-ahorro">Ahorran hasta { formatPrecio(t.Ahorro) }</p>
+			}
+		</div>
+		<div class="promo-pie">
+			<label class="disponible-celda">
+				@Switch("activa", t.Activa, "Activa: "+t.Nombre, templ.Attributes{
+					"hx-put":     fmt.Sprintf("/admin/promos/%d/activa", t.ID),
+					"hx-trigger": "change",
+					"hx-include": "this",
+					"hx-target":  "closest .promo-tarjeta",
+					"hx-swap":    "outerHTML",
+				})
+				if t.Activa {
+					<span>Activa: se ve en el menú</span>
+				} else {
+					<span>Pausada</span>
+				}
+			</label>
+			<div class="acciones">
+				<button class="boton-icono" aria-label={ "Editar " + t.Nombre } hx-get={ fmt.Sprintf("/admin/promos/%d/editar", t.ID) } hx-target="#modal" hx-swap="innerHTML">
+					@IconoEditar()
+				</button>
+				<button class="boton-icono peligro" aria-label={ "Borrar " + t.Nombre } hx-get={ fmt.Sprintf("/admin/promos/%d/borrar", t.ID) } hx-target="#modal" hx-swap="innerHTML">
+					@IconoBorrar()
+				</button>
+			</div>
+		</div>
+	</article>
+}
+
+// recalcula pide el modal recalculado y reemplaza solo la columna de la derecha (y, si hace falta,
+// otras partes por oob): así no se pierde el foco, el scroll ni la foto elegida. Va urlencoded (el
+// form es multipart solo al guardar), así no sube la foto en cada cambio.
+func recalcula(trigger, oob string) templ.Attributes {
+	a := templ.Attributes{
+		"hx-post":    RutaVistaPromo,
+		"hx-trigger": trigger,
+		"hx-target":  "#promo-vista",
+		"hx-select":  "#promo-vista",
+		"hx-swap":    "outerHTML",
+	}
+	if oob != "" {
+		a["hx-select-oob"] = oob
+	}
+	return a
+}
+
+// ModalPromo es el alta y la edición (el mismo modal). A la izquierda el formulario y a la derecha
+// cómo lo ve el cliente y las cuentas, que se recalculan en el servidor mientras se arma.
+templ ModalPromo(f FormPromo) {
+	@Modal(OpcionesModal{Titulo: tituloModalPromo(f), Subtitulo: "El cliente elige entre los productos que marques, en el tamaño que digas.", Ancho: true}) {
+		<form
+			id="form-promo"
+			method="post"
+			enctype="multipart/form-data"
+			action={ templ.URL(accionPromo(f)) }
+			hx-post={ accionPromo(f) }
+			hx-target="#panel-promos"
+			hx-swap="outerHTML"
+		>
+			// Enter en un campo no guarda (como en Cargar pedido): el botón "por defecto" está apagado.
+			<button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>
+			<input type="hidden" name="foto_actual" value={ f.Foto }/>
+			<div class="promo-modal">
+				<div class="promo-form">
+					if f.Error != "" {
+						<p class="error" role="alert">{ f.Error }</p>
+					}
+					<div class="campo">
+						<span class="campo-label">Foto (opcional)</span>
+						if f.Foto != "" {
+							<div class="promo-foto-actual">
+								<img src={ templ.URL(f.Foto) } alt="Foto actual de la promo"/>
+								<label class="chip">
+									<input type="checkbox" name="quitar_foto" value="1" checked?={ f.QuitarFoto } { recalcula("change", "")... }/>
+									Quitar la foto
+								</label>
+							</div>
+						}
+						@SubirFoto("Subí una foto", f.Foto != "")
+					</div>
+					<div class="promo-fila">
+						<div class="campo">
+							<label for="promo-nombre">Nombre de la promo</label>
+							<input id="promo-nombre" name="nombre" type="text" value={ f.Nombre } maxlength="100" required { recalcula("input changed delay:400ms", "")... }/>
+						</div>
+						<div class="campo">
+							<label for="promo-precio">Precio de la promo</label>
+							<div class="campo-precio">
+								<span class="prefijo" aria-hidden="true">$</span>
+								<input id="promo-precio" name="precio" type="number" inputmode="decimal" min="0" step="1" value={ f.Precio } required { recalcula("input changed delay:400ms", "")... }/>
+							</div>
+						</div>
+					</div>
+					<div class="promo-fila promo-fila-cantidad">
+						<div class="campo">
+							<span class="campo-label">¿Cuántas elige el cliente?</span>
+							@stepperCantidad(f.Cantidad)
+						</div>
+						<fieldset class="campo" { recalcula("change", "#promo-elegibles,#promo-ayuda-tamano,#promo-conteo")... }>
+							<legend class="campo-label">Tamaño</legend>
+							<div class="chips">
+								for _, t := range tamanosPromo {
+									@radioChip("tamano", t.Valor, t.Label, f.Tamano == t.Valor)
+								}
+							</div>
+						</fieldset>
+					</div>
+					<p id="promo-ayuda-tamano" class="ayuda">{ ayudaTamano(f.Tamano) }</p>
+					<div class="elegibles-cabecera">
+						@conteoElegibles(f)
+						<button type="button" class="boton-link" hx-vals='{"marcar":"todas"}' { recalcula("click", "#promo-elegibles,#promo-conteo")... }>Marcar todas</button>
+					</div>
+					@elegiblesPromo(f)
+					<fieldset class="campo" { recalcula("change", "")... }>
+						<legend class="campo-label">Qué días está</legend>
+						<div class="chips dias-promo">
+							for _, d := range diasPromo {
+								<label class="chip chip-dia" title={ d.Nombre }>
+									<input type="checkbox" name="dia" value={ fmt.Sprint(d.N) } checked?={ f.Dias[d.N] } aria-label={ d.Nombre }/>
+									{ d.Letra }
+								</label>
+							}
+						</div>
+					</fieldset>
+					<p class="ayuda">Los extras se cobran aparte, como siempre.</p>
+				</div>
+				@vistaPromo(f.Vista)
+			</div>
+			<div class="modal-pie">
+				<button type="button" class="boton boton-texto" hx-get={ rutaModalPromo(f) } hx-target="#modal" hx-swap="innerHTML">LIMPIAR</button>
+				<div class="modal-acciones">
+					@BotonCancelarModal()
+					<button type="submit" class="boton boton-primario">GUARDAR PROMO</button>
+				</div>
+			</div>
+		</form>
+	}
+}
+
+// stepperCantidad es el − n + de cuántas elige el cliente. Cada botón pide el modal recalculado con
+// el paso y reemplaza el stepper y la vista previa.
+templ stepperCantidad(n int) {
+	<div id="promo-cantidad" class="stepper">
+		<input type="hidden" name="cantidad" value={ fmt.Sprint(n) }/>
+		<button type="button" class="stepper-boton" aria-label="Una menos" hx-vals='{"paso":"-1"}' disabled?={ n <= 1 } { recalcula("click", "#promo-cantidad")... }>−</button>
+		<span class="stepper-numero" aria-live="polite">{ fmt.Sprint(n) }</span>
+		<button type="button" class="stepper-boton mas" aria-label="Una más" hx-vals='{"paso":"1"}' disabled?={ n >= 10 } { recalcula("click", "#promo-cantidad")... }>+</button>
+	</div>
+}
+
+templ conteoElegibles(f FormPromo) {
+	<span id="promo-conteo" class="campo-label">Qué productos entran ({ fmt.Sprint(marcados(f)) } de { fmt.Sprint(len(f.Elegibles)) })</span>
+}
+
+// elegiblesPromo es la lista con checkbox, agrupada (HAMBURGUESAS, VEGGIE). Cambia entera cuando
+// cambia el tamaño (el precio "por separado" y los que no tienen doble).
+templ elegiblesPromo(f FormPromo) {
+	<div id="promo-elegibles" class="elegibles" { recalcula("change", "#promo-conteo")... }>
+		if len(f.Elegibles) == 0 {
+			<p class="vacio">Todavía no hay hamburguesas cargadas.</p>
+		}
+		for i, e := range f.Elegibles {
+			if i == 0 || f.Elegibles[i-1].Grupo != e.Grupo {
+				<div class="elegibles-grupo">{ e.Grupo }</div>
+			}
+			<label class={ "elegible", templ.KV("apagado", e.SinDoble) }>
+				<input type="checkbox" name="producto" value={ fmt.Sprint(e.ID) } checked?={ e.Marcado && !e.SinDoble } disabled?={ e.SinDoble }/>
+				<span class="elegible-nombre">{ e.Nombre }</span>
+				if e.SinDoble {
+					<span class="elegible-precio">sin doble</span>
+				} else {
+					<span class="elegible-precio">{ formatPrecio(e.PorSeparado) } por separado</span>
+				}
+			</label>
+		}
+	</div>
+}
+
+// vistaPromo es "ASÍ LO VE EL CLIENTE" y las cuentas.
+templ vistaPromo(v VistaPromo) {
+	<div id="promo-vista" class="promo-vista" aria-live="polite">
+		<span class="carga-titulo">ASÍ LO VE EL CLIENTE</span>
+		<div class="promo-vista-tarjeta">
+			<div class="promo-vista-foto">
+				if v.Foto != "" {
+					<img src={ templ.URL(v.Foto) } alt=""/>
+				} else {
+					<span>Acá va la foto</span>
+				}
+			</div>
+			<div class="promo-vista-texto">
+				<span class="promo-vista-badge">PROMO</span>
+				<strong class="promo-vista-nombre">
+					if v.Nombre != "" {
+						{ v.Nombre }
+					} else {
+						Nombre de la promo
+					}
+				</strong>
+				<p>{ v.Descripcion }</p>
+				if v.Precio != "" {
+					<strong class="promo-vista-precio">{ formatPrecio(v.Precio) }</strong>
+				}
+				if v.Ahorro != "" {
+					<span class="promo-vista-ahorro">Ahorrás hasta { formatPrecio(v.Ahorro) }</span>
+				}
+			</div>
+		</div>
+		<span class="carga-titulo">CUENTAS</span>
+		<div class="carga-cuentas promo-cuentas">
+			if !v.HayCuentas {
+				<p class="ayuda">Marcá los productos que entran y el precio para ver las cuentas.</p>
+			} else {
+				<div class="linea-cuenta"><span>Por separado, si eligen las más baratas</span><strong>{ formatPrecio(v.Min) }</strong></div>
+				<div class="linea-cuenta"><span>Por separado, si eligen las más caras</span><strong>{ formatPrecio(v.Max) }</strong></div>
+				<div class="linea-cuenta"><span>Precio de la promo</span><strong>{ formatPrecio(v.Precio) }</strong></div>
+				if v.MasCara {
+					<div class="linea-cuenta descuento"><span>Ojo: sale más cara que por separado</span></div>
+				} else if v.Ahorro != "" {
+					<div class="linea-cuenta ahorro"><span>Ahorro para el cliente</span><strong>hasta { formatPrecio(v.Ahorro) }</strong></div>
+				}
+			}
+		</div>
+		<p class="ayuda">“Por separado” es lo que pagaría el cliente pidiendo esas mismas hamburguesas fuera de la promo, a precio de menú. Si la promo sale más cara, te avisamos acá.</p>
+	</div>
+}
+
+// ModalConfirmarBorradoPromo pide confirmar, y recuerda que pausarla alcanza.
+templ ModalConfirmarBorradoPromo(id int32, nombre string) {
+	@Modal(OpcionesModal{Titulo: "¿BORRAR PROMO?", Alerta: true, Describe: "texto-borrar", Chico: true}) {
+		<div class="modal-cuerpo">
+			<p class="confirmar-texto" id="texto-borrar">
+				Vas a borrar <strong>{ nombre }</strong>. No se puede deshacer. Si es por un tiempo, mejor
+				pausala.
+			</p>
+		</div>
+		<div class="modal-pie pie-fin">
+			@BotonCancelarModal()
+			<button type="button" class="boton boton-peligro" hx-delete={ fmt.Sprintf("/admin/promos/%d", id) } hx-target="#panel-promos" hx-swap="outerHTML">BORRAR</button>
+		</div>
+	}
+}
+
+// AvisoPromos se suma al confirmar el borrado de un producto que está en promos activas.
+templ AvisoPromos(nombres []string) {
+	if len(nombres) > 0 {
+		<p class="aviso-en-curso">
+			if len(nombres) == 1 {
+				Está en la promo { nombres[0] }: si lo borrás, sale de la promo.
+			} else {
+				Está en { fmt.Sprint(len(nombres)) } promos activas: si lo borrás, sale de todas.
+			}
+		</p>
+	}
+}
+
+func marcados(f FormPromo) int {
+	n := 0
+	for _, e := range f.Elegibles {
+		if e.Marcado && !e.SinDoble {
+			n++
+		}
+	}
+	return n
+}
+
+func ayudaTamano(t string) string {
+	switch t {
+	case "doble":
+		return "Todas las hamburguesas de la promo van dobles."
+	case "cliente":
+		return "El cliente elige simple o doble en cada una."
+	}
+	return "Todas las hamburguesas de la promo van simples."
+}
+
+func tituloModalPromo(f FormPromo) string {
+	if f.ID != 0 {
+		return "EDITAR PROMO"
+	}
+	return "NUEVA PROMO"
+}
+
+func accionPromo(f FormPromo) string {
+	if f.ID != 0 {
+		return fmt.Sprintf("/admin/promos/%d", f.ID)
+	}
+	return "/admin/promos"
+}
+
+func rutaModalPromo(f FormPromo) string {
+	if f.ID != 0 {
+		return fmt.Sprintf("/admin/promos/%d/editar", f.ID)
+	}
+	return "/admin/promos/nueva"
+}

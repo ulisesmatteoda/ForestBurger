@@ -3,6 +3,8 @@ package views
 import (
 	"context"
 	"fmt"
+
+	"forestburger/auth"
 )
 
 // NombresDias va en el orden de la tabla horario (0 = lunes ... 6 = domingo).
@@ -39,6 +41,15 @@ templ AjustesPage(f FormAjustes) {
 			</div>
 		</header>
 		@AjustesForm(f)
+		// En el celu no hay barra lateral: la sesión y "Salir" van acá, al final.
+		if email := auth.AdminDesdeContexto(ctx); email != "" {
+			<div class="sesion-celu solo-celu">
+				<span class="sidebar-admin">{ email }</span>
+				<form method="post" action="/logout">
+					<button type="submit" class="boton boton-secundario">SALIR</button>
+				</form>
+			</div>
+		}
 	}
 }
 

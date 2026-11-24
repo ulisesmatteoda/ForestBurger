@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -249,9 +250,10 @@ func TestPedidos_MetricasYGrafico(t *testing.T) {
 	for _, esperado := range []string{
 		"VENTAS DE HOY", "$72.000", "2 pedidos · +100,0% vs. ayer",
 		"Efectivo $36.000 · Transferencia $36.000",
-		"VENTAS DE LA SEMANA", semana,
-		"TICKET PROMEDIO", "$36.000",
-		"VENTAS POR DÍA", "no incluye pedidos cancelados", "(hoy)", `style="--alto: 100;"`, "Total de la semana",
+		`<span class="metrica-titulo">PEDIDOS</span> <span class="metrica-valor">2</span> <span class="metrica-detalle">1 cancelado</span>`,
+		"TICKET PROMEDIO", "$36.000", "Por pedido, hoy",
+		"VENTAS POR DÍA", "no incluye pedidos cancelados", "(hoy)", `style="--alto: 100;"`,
+		"Total de la semana", semana, `style="--columnas: 7;"`,
 	} {
 		if !strings.Contains(body, esperado) {
 			t.Errorf("las métricas no contienen %q", esperado)
@@ -261,8 +263,31 @@ func TestPedidos_MetricasYGrafico(t *testing.T) {
 		t.Errorf("el gráfico tiene %d barras, quiero 7", n)
 	}
 
-	// Un filtro con htmx cambia solo la lista: las métricas no vienen.
-	if body := pedirPanel(mux, "/admin/pedidos?rango=ayer", true).Body.String(); strings.Contains(body, "VENTAS DE HOY") {
-		t.Error("con htmx no tendría que recalcular las métricas")
+	// Un filtro con htmx trae la lista y, por OOB, las métricas de ese período.
+	body = pedirPanel(mux, "/admin/pedidos?rango=ayer", true).Body.String()
+	for _, esperado := range []string{
+		`id="metricas" class="metricas-y-grafico" hx-swap-oob="true"`, "VENTAS DE AYER", "Por pedido, ayer",
+		"1 pedido", "Ninguno cancelado", "$36.000",
+	} {
+		if !strings.Contains(body, esperado) {
+			t.Errorf("con ?rango=ayer las métricas no contienen %q", esperado)
+		}
+	}
+
+	// Este mes: todos los del mes y una barra por día.
+	hoy := mediodia(0)
+	mes, cantidad := "$72.000", "2"
+	if mediodia(-1).Month() == hoy.Month() {
+		mes, cantidad = "$108.000", "3"
+	}
+	diasDelMes := time.Date(hoy.Year(), hoy.Month()+1, 0, 0, 0, 0, 0, pedidos.Zona).Day()
+	body = pedirPanel(mux, "/admin/pedidos?rango=mes", false).Body.String()
+	for _, esperado := range []string{
+		"VENTAS DE ESTE MES", mes, `<span class="metrica-valor">` + cantidad + `</span>`, "Por pedido, este mes", "Total del mes",
+		fmt.Sprintf(`class="barras muchas" style="--columnas: %d;"`, diasDelMes),
+	} {
+		if !strings.Contains(body, esperado) {
+			t.Errorf("con ?rango=mes las métricas no contienen %q", esperado)
+		}
 	}
 }

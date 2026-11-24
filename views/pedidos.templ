@@ -61,16 +61,18 @@ type EventoHistorial struct {
 	Hora, Texto string
 }
 
-// MetricasPedidos son las tarjetas y el gráfico de ventas, ya formateados (los montos como
-// "17500.00"). Siempre de hoy y de esta semana, sin los pedidos cancelados.
+// MetricasPedidos son las tarjetas y el gráfico de ventas del período del filtro, ya formateados
+// (los montos como "17500.00"). Sin los pedidos cancelados.
 type MetricasPedidos struct {
-	HoyTotal, HoyDetalle             string // "18 pedidos · +3,5% vs. ayer"
-	HoyEfectivo, HoyTransferencia    string
-	SemanaTotal, SemanaDetalle       string // "96 pedidos · lun 16 al dom 22/11"
-	SemanaEfectivo, SemanaTransferencia string
-	Ticket                           string // vacío si hoy no hubo pedidos
-	SemanaTitulo                     string // "Semana del 16 al 22 de noviembre"
-	Barras                           []BarraVenta
+	VentasTitulo                        string // "VENTAS DE ESTE MES"
+	VentasTotal, VentasDetalle          string // "18 pedidos · +3,5% vs. mes pasado"
+	VentasEfectivo, VentasTransferencia string
+	PedidosCantidad, PedidosDetalle     string // "18", "2 cancelados"
+	Ticket                              string // vacío si no hubo pedidos
+	TicketDetalle                       string // "Por pedido, este mes"
+	GraficoTitulo, GraficoSub           string // "VENTAS POR DÍA", "Noviembre de 2026 · …"
+	TotalTitulo, GraficoTotal           string // "Total del mes"
+	Barras                              []BarraVenta
 }
 
 // BarraVenta es un día del gráfico. Valor vacío: el día todavía no llegó.
@@ -95,7 +97,7 @@ templ PedidosPage(hoy string, m MetricasPedidos, f FiltroPedidos, filas []FilaPe
 				hx-get="/admin/pedidos/cargar"
 				hx-target="#modal"
 				hx-swap="innerHTML"
-			>+ CARGAR PEDIDO</a>
+			>+ CARGAR <span class="solo-compu">PEDIDO</span></a>
 		</header>
 		@Metricas(m, false)
 		@PedidosPanel(f, filas, false)
@@ -120,16 +122,15 @@ templ Metricas(m MetricasPedidos, oob bool) {
 	>
 	<section class="metricas" aria-label="Ventas">
 		<div class="metrica">
-			<span class="metrica-titulo">VENTAS DE HOY</span>
-			<span class="metrica-valor">{ formatPrecio(m.HoyTotal) }</span>
-			<span class="metrica-detalle">{ m.HoyDetalle }</span>
-			@desglosePago(m.HoyEfectivo, m.HoyTransferencia)
+			<span class="metrica-titulo">{ m.VentasTitulo }</span>
+			<span class="metrica-valor">{ formatPrecio(m.VentasTotal) }</span>
+			<span class="metrica-detalle">{ m.VentasDetalle }</span>
+			@desglosePago(m.VentasEfectivo, m.VentasTransferencia)
 		</div>
 		<div class="metrica">
-			<span class="metrica-titulo">VENTAS DE LA SEMANA</span>
-			<span class="metrica-valor">{ formatPrecio(m.SemanaTotal) }</span>
-			<span class="metrica-detalle">{ m.SemanaDetalle }</span>
-			@desglosePago(m.SemanaEfectivo, m.SemanaTransferencia)
+			<span class="metrica-titulo">PEDIDOS</span>
+			<span class="metrica-valor">{ m.PedidosCantidad }</span>
+			<span class="metrica-detalle">{ m.PedidosDetalle }</span>
 		</div>
 		<div class="metrica">
 			<span class="metrica-titulo">TICKET PROMEDIO</span>
@@ -140,17 +141,24 @@ templ Metricas(m MetricasPedidos, oob bool) {
 					—
 				}
 			</span>
-			<span class="metrica-detalle">Por pedido, hoy</span>
+			<span class="metrica-detalle">{ m.TicketDetalle }</span>
 		</div>
 	</section>
 	<section class="grafico" aria-label="Ventas por día">
 		<div>
-			<h2 class="lista-titulo">VENTAS POR DÍA</h2>
-			<p class="grafico-sub">{ m.SemanaTitulo } · no incluye pedidos cancelados</p>
+			<h2 class="lista-titulo">{ m.GraficoTitulo }</h2>
+			<p class="grafico-sub">{ m.GraficoSub }</p>
 		</div>
-		<div class="barras">
+		// --columnas: cuántas barras van (7 en una semana, 30 en un mes). Con muchas, el monto no
+		// entra arriba de cada una: se ve al pasar el mouse (title).
+		<div class={ "barras", templ.KV("muchas", len(m.Barras) > 10) } style={ fmt.Sprintf("--columnas: %d", len(m.Barras)) }>
 			for _, b := range m.Barras {
-				<div class={ "barra-dia", templ.KV("hoy", b.EsHoy) }>
+				<div
+					class={ "barra-dia", templ.KV("hoy", b.EsHoy) }
+					if b.Valor != "" {
+						title={ b.Dia + ": " + formatPrecio(b.Valor) }
+					}
+				>
 					if b.Valor != "" {
 						<span class="barra-valor">{ formatPrecio(b.Valor) }</span>
 					} else {
@@ -163,8 +171,8 @@ templ Metricas(m MetricasPedidos, oob bool) {
 			}
 		</div>
 		<div class="grafico-total">
-			<span>Total de la semana</span>
-			<strong>{ formatPrecio(m.SemanaTotal) }</strong>
+			<span>{ m.TotalTitulo }</span>
+			<strong>{ formatPrecio(m.GraficoTotal) }</strong>
 		</div>
 	</section>
 	</div>
@@ -257,19 +265,20 @@ templ chipPedidos(c Chip) {
 
 templ filaPedido(p FilaPedido) {
 	<tr>
-		<td class="pedido-numero">#{ fmt.Sprint(p.ID) }</td>
-		<td class="pedido-hora">{ p.Hora }</td>
-		<td>
+		// Las clases col-* ubican cada celda en la tarjeta del celu (ver styles.css).
+		<td class="pedido-numero col-numero">#{ fmt.Sprint(p.ID) }</td>
+		<td class="pedido-hora col-hora">{ p.Hora }</td>
+		<td class="col-cliente">
 			<div class="pedido-cliente">{ p.Cliente }</div>
 			<div class="producto-desc">{ p.Resumen }</div>
 		</td>
-		<td>{ p.Entrega }</td>
-		<td>{ p.Pago }</td>
-		<td class="precio">{ formatPrecio(p.Total) }</td>
-		<td>
+		<td class="col-entrega">{ p.Entrega }</td>
+		<td class="col-pago">{ p.Pago }</td>
+		<td class="precio col-total">{ formatPrecio(p.Total) }</td>
+		<td class="col-estado">
 			@EtiquetaEstado(p.ID, p.Estado, false)
 		</td>
-		<td>
+		<td class="col-ver">
 			<button
 				class="boton-icono"
 				aria-label={ fmt.Sprintf("Ver el pedido #%d", p.ID) }

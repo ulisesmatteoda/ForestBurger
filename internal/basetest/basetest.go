@@ -30,7 +30,7 @@ func Abrir(t *testing.T) *sql.DB {
 		t.Fatalf("no se pudo conectar a la base: %v", err)
 	}
 	// ajustes y horario tienen siempre una fila (y siete): se vuelven a sus valores de fábrica.
-	if _, err := db.Exec(`TRUNCATE pedido, producto, admin, extra RESTART IDENTITY CASCADE;
+	if _, err := db.Exec(`TRUNCATE pedido, producto, admin, extra, promo RESTART IDENTITY CASCADE;
 		TRUNCATE ajustes, horario;
 		INSERT INTO ajustes (id) VALUES (1);
 		INSERT INTO horario (dia) SELECT generate_series(0, 6)`); err != nil {

@@ -20,6 +20,11 @@ RETURNING *;
 UPDATE producto SET imagen_url = $2 WHERE id = $1
 RETURNING *;
 
+-- name: UpdateDisponibleProducto :one
+-- El switch de agotado de la lista: prende o apaga sin tocar lo demás.
+UPDATE producto SET disponible = $2 WHERE id = $1
+RETURNING *;
+
 -- name: DeleteProducto :exec
 DELETE FROM producto WHERE id = $1;
 -- name: ListProductosPorCategoria :many

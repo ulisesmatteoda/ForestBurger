@@ -5,12 +5,36 @@ CREATE TABLE IF NOT EXISTS producto (
     precio DECIMAL(10,2) NOT NULL,
     precio_doble DECIMAL(10,2),   -- NULL si el producto no tiene versión doble
     descripcion TEXT,
-    imagen_url TEXT               -- ruta de la foto ("/uploads/..."); NULL si no tiene. La imagen va a disco.
+    imagen_url TEXT,              -- ruta de la foto ("/uploads/..."); NULL si no tiene. La imagen va a disco.
+    disponible BOOLEAN NOT NULL DEFAULT true   -- false: agotado (no se puede pedir)
 );
 
 -- Para una base que ya estaba levantada antes de existir la columna (make crear-admin aplica este
 -- schema sobre la base que haya): CREATE TABLE IF NOT EXISTS no la agrega, esto sí.
 ALTER TABLE producto ADD COLUMN IF NOT EXISTS imagen_url TEXT;
+ALTER TABLE producto ADD COLUMN IF NOT EXISTS disponible BOOLEAN NOT NULL DEFAULT true;
+
+-- Las promos: el cliente elige `cantidad` hamburguesas entre los productos de promo_producto, del
+-- tamaño que diga la promo ('cliente': elige él, simple o doble), por un precio fijo. dias son los
+-- días de la semana en que está (0 = domingo … 6 = sábado, como time.Weekday de Go; ojo, horario.dia
+-- arranca en lunes).
+CREATE TABLE IF NOT EXISTS promo (
+    id SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    precio DECIMAL(10,2) NOT NULL CHECK (precio > 0),
+    cantidad SMALLINT NOT NULL CHECK (cantidad BETWEEN 1 AND 10),
+    tamano VARCHAR(10) NOT NULL CHECK (tamano IN ('simple', 'doble', 'cliente')),
+    dias INTEGER[] NOT NULL,
+    imagen_url TEXT,
+    activa BOOLEAN NOT NULL DEFAULT true
+);
+
+-- Los productos que entran en cada promo (N a M). Si se borra el producto, sale de la promo.
+CREATE TABLE IF NOT EXISTS promo_producto (
+    promo_id INTEGER NOT NULL REFERENCES promo(id) ON DELETE CASCADE,
+    producto_id INTEGER NOT NULL REFERENCES producto(id) ON DELETE CASCADE,
+    PRIMARY KEY (promo_id, producto_id)
+);
 
 -- Personal del local que entra a /admin. No hay registro público: se crean con make crear-admin.
 -- password_hash es bcrypt; la contraseña nunca se guarda.

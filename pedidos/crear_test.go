@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	sqlc "forestburger/db/sqlc"
@@ -128,6 +129,19 @@ func TestCrear_Errores(t *testing.T) {
 				t.Errorf("con un error no tendría que quedar nada guardado, hay %d pedidos", hay)
 			}
 		})
+	}
+}
+
+// Un producto agotado (el switch de la lista de Productos) no se puede pedir.
+func TestCrear_ProductoAgotado(t *testing.T) {
+	db := basetest.Abrir(t)
+	c := cargarCatalogo(t, db)
+	if _, err := sqlc.New(db).UpdateDisponibleProducto(context.Background(), sqlc.UpdateDisponibleProductoParams{ID: c.gaseosa.ID, Disponible: false}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Crear(context.Background(), db, pedidoFigma(c))
+	if !errors.Is(err, ErrPedidoInvalido) || !strings.Contains(err.Error(), "Gaseosa lata está agotado") {
+		t.Errorf("quiero el error de agotado, vino %v", err)
 	}
 }
 

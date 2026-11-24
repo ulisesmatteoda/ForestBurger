@@ -211,3 +211,20 @@ func historialDe(t *testing.T, q *sqlc.Queries, id int32) []string {
 	}
 	return h
 }
+
+func TestCargarPedido_AgotadoNoSePuedeAgregar(t *testing.T) {
+	mux, q, _, prod, _ := conPedidos(t)
+	if _, err := q.UpdateDisponibleProducto(context.Background(), sqlc.UpdateDisponibleProductoParams{ID: prod.ID, Disponible: false}); err != nil {
+		t.Fatal(err)
+	}
+	body := pedirPanel(mux, "/admin/pedidos/cargar", true).Body.String()
+	if !strings.Contains(body, `class="carga-producto apagado"`) || !strings.Contains(body, `<span class="tag">Agotado</span>`) || strings.Contains(body, html.EscapeString(`"accion":"agregar"`)) {
+		t.Errorf("un agotado tendría que verse sin botones para agregar: %s", body)
+	}
+	// Y si igual llega (un form viejo), guardar lo rechaza.
+	f := formCarga(nil)
+	conItem(f, idTexto(prod.ID))
+	if body := pedirExtra(mux, http.MethodPost, "/admin/pedidos/cargar", f, true).Body.String(); !strings.Contains(body, "Cheese Bacon está agotado") {
+		t.Errorf("guardar con un agotado tendría que avisar: %s", body)
+	}
+}

@@ -37,6 +37,7 @@ type ProductoCarga struct {
 	ID             int32
 	Nombre         string
 	Simple, Doble  string
+	Agotado        bool // se ve, pero no se puede agregar
 }
 
 // ItemCarga es un renglón del pedido. Los campos de arriba viajan ocultos en el form.
@@ -81,10 +82,12 @@ templ ModalCargarPedido(c CargaPedido) {
 					</div>
 					<div class="carga-lista">
 						for _, p := range c.Productos {
-							<div class="carga-producto">
+							<div class={ "carga-producto", templ.KV("apagado", p.Agotado) }>
 								<span class="producto-nombre">{ p.Nombre }</span>
 								<div class="carga-tamanos">
-									if p.Doble != "" {
+									if p.Agotado {
+										<span class="tag">Agotado</span>
+									} else if p.Doble != "" {
 										@botonArmar(fmt.Sprintf(`{"accion":"agregar","producto":"%d","tamano":"simple"}`, p.ID), "boton-tamano", false) {
 											<span>Simple</span><strong>{ formatPrecio(p.Simple) }</strong>
 										}

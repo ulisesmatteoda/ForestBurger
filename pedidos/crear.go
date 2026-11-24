@@ -253,6 +253,9 @@ func armarItems(ctx context.Context, q *sqlc.Queries, nuevos []NuevoItem) ([]ite
 		if err != nil {
 			return nil, nil, err
 		}
+		if !prod.Disponible {
+			return nil, nil, invalido("%s está agotado", prod.Nombre)
+		}
 		precioTexto := prod.Precio
 		if n.Tamano == TamanoDoble {
 			if !prod.PrecioDoble.Valid {
