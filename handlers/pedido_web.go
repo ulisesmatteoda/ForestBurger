@@ -469,7 +469,7 @@ func (a *API) filasPedidos(ctx context.Context, f filtroPedidos) ([]views.FilaPe
 	}
 	resumen := map[int32][]string{}
 	for _, it := range items {
-		resumen[it.PedidoID] = append(resumen[it.PedidoID], textoItem(int(it.Cantidad), it.Nombre, it.Tamano, it.Extras))
+		resumen[it.PedidoID] = append(resumen[it.PedidoID], textoItemPedido(int(it.Cantidad), it.Nombre, it.Tamano, it.Extras, it.Aclaraciones, it.Detalle))
 	}
 	filas := make([]views.FilaPedido, len(lista))
 	for i, p := range lista {
@@ -541,7 +541,7 @@ func (a *API) detallePedido(r *http.Request, id int32) (views.DetallePedido, err
 			nombres = append(nombres, nombre)
 		}
 		d.Lineas = append(d.Lineas, views.LineaPedido{
-			Texto: textoItem(int(it.Cantidad), it.Nombre, it.Tamano, strings.Join(nombres, ", ")),
+			Texto: textoItemPedido(int(it.Cantidad), it.Nombre, it.Tamano, strings.Join(nombres, ", "), it.Aclaraciones, it.Detalle),
 			Total: linea.Total().Texto(),
 		})
 	}
@@ -573,7 +573,7 @@ func (a *API) detallePedido(r *http.Request, id int32) (views.DetallePedido, err
 
 // textoItem: "2x Cheese Bacon (doble) + cheddar". Las bebidas y acompañamientos (simple) no dicen
 // el tamaño.
-func textoItem(cantidad int, nombre, tamano, extras string) string {
+func textoItem(cantidad int, nombre, tamano, extras, aclaraciones string) string {
 	t := fmt.Sprintf("%dx %s", cantidad, nombre)
 	if tamano == pedidos.TamanoDoble {
 		t += " (doble)"
@@ -581,7 +581,19 @@ func textoItem(cantidad int, nombre, tamano, extras string) string {
 	if extras != "" {
 		t += " + " + strings.ToLower(extras)
 	}
+	if aclaraciones != "" {
+		t += " · “" + aclaraciones + "”"
+	}
 	return t
+}
+
+// textoItemPedido es textoItem, salvo para una promo del cliente: "1x 2 Smash (promo): Classic
+// (simple) + Cheddar · Big Forest (simple)" (sus extras ya están en el detalle).
+func textoItemPedido(cantidad int, nombre, tamano, extras, aclaraciones, detalle string) string {
+	if detalle != "" {
+		return fmt.Sprintf("%dx %s (promo): %s", cantidad, nombre, detalle)
+	}
+	return textoItem(cantidad, nombre, tamano, extras, aclaraciones)
 }
 
 func textoEntrega(e string) string {

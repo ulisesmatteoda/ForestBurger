@@ -121,8 +121,14 @@ CREATE TABLE IF NOT EXISTS item_pedido (
     nombre VARCHAR(255) NOT NULL,
     tamano VARCHAR(10) NOT NULL CHECK (tamano IN ('simple', 'doble')),
     cantidad SMALLINT NOT NULL CHECK (cantidad > 0),
-    precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0)
+    precio_unitario DECIMAL(10,2) NOT NULL CHECK (precio_unitario >= 0),
+    aclaraciones TEXT NOT NULL DEFAULT ''   -- lo que pide el cliente para ese ítem ("sin cebolla")
 );
+ALTER TABLE item_pedido ADD COLUMN IF NOT EXISTS aclaraciones TEXT NOT NULL DEFAULT '';
+-- Una promo del cliente ("Armá tu promo") es un ítem: su precio fijo, y en detalle lo que eligió
+-- ("Classic (simple) + Cheddar · Big Forest (simple)"). Los extras van en item_pedido_extra.
+ALTER TABLE item_pedido ADD COLUMN IF NOT EXISTS promo_id INTEGER REFERENCES promo(id) ON DELETE SET NULL;
+ALTER TABLE item_pedido ADD COLUMN IF NOT EXISTS detalle TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS item_pedido_extra (
     id SERIAL PRIMARY KEY,

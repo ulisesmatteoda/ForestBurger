@@ -4,9 +4,9 @@ Trabajo práctico de **Programación Web (UNICEN)**. Es una app web para una ham
 
 ## Concepto
 
-El cliente mira el menú en la web, arma su pedido (productos, extras y aclaraciones) y lo manda. El local lo atiende desde el **panel** (`/admin`): productos, promos, extras, pedidos y ajustes. El panel se puede instalar como app (PWA).
+El cliente mira el menú en la web, arma su pedido (productos, extras y aclaraciones) y lo confirma: entra al sistema como **pendiente** (con aviso y alarma en el panel) y el cliente lo sigue con el link `/pedido/{token}`. El carrito va en una cookie; los precios los pone siempre el servidor. El local lo atiende desde el **panel** (`/admin`): productos, promos, extras, pedidos y ajustes. El panel se puede instalar como app (PWA).
 
-El diseño está en Figma: archivo `sU9jcobXIMVEt95QMQfrGI`, página Admin `15:324` (escritorio y frames "Celu ·"). Leelo **con la menor cantidad de llamadas posible**: una `get_metadata` de la página procesada localmente y las capturas justas.
+El diseño está en Figma: archivo `sU9jcobXIMVEt95QMQfrGI`, páginas Admin `15:324` (escritorio y frames "Celu ·") y Pantallas `0:1` (la web del cliente). Leelo **con la menor cantidad de llamadas posible**: una `get_metadata` de la página procesada localmente y las capturas justas.
 
 ## Stack
 
@@ -55,7 +55,7 @@ La fuente de verdad es **`db/schema.sql`**. Resumen:
 | `extra` | Los agregados con precio (cheddar, panceta…), con `disponible` |
 | `promo` y `promo_producto` | Las promos: precio, cuántas elige el cliente, tamaño, días (0 = domingo, como `time.Weekday`), foto, activa, y los productos que entran (N a M) |
 | `pedido` | Cliente, origen, entrega, pago, estado, cuentas (subtotal, descuento, envío, total), `token` de seguimiento y `visto_en` |
-| `item_pedido` | Las líneas del pedido |
+| `item_pedido` | Las líneas del pedido, con sus aclaraciones. Una promo armada por el cliente es una línea con `promo_id` y lo elegido en `detalle` |
 | `item_pedido_extra` | Los extras de cada unidad de una línea |
 | `pedido_evento` | El historial de estados |
 | `admin` | El personal que entra al panel (bcrypt) |

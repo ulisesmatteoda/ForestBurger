@@ -6,8 +6,8 @@ INSERT INTO pedido (
 RETURNING *;
 
 -- name: CreateItemPedido :one
-INSERT INTO item_pedido (pedido_id, producto_id, nombre, tamano, cantidad, precio_unitario)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO item_pedido (pedido_id, producto_id, nombre, tamano, cantidad, precio_unitario, aclaraciones, promo_id, detalle)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: CreateItemPedidoExtra :exec
@@ -20,6 +20,10 @@ VALUES ($1, $2, $3, $4);
 
 -- name: GetPedido :one
 SELECT * FROM pedido WHERE id = $1;
+
+-- name: GetPedidoPorToken :one
+-- La página de seguimiento del cliente (/pedido/{token}).
+SELECT * FROM pedido WHERE token = $1;
 
 -- name: ListItemsPedido :many
 SELECT * FROM item_pedido WHERE pedido_id = $1 ORDER BY id;
@@ -62,7 +66,7 @@ ORDER BY creado_en DESC;
 -- name: ListResumenItems :many
 -- Los ítems de varios pedidos a la vez (los de la lista), con los nombres de sus extras juntos:
 -- una sola consulta en vez de una por pedido.
-SELECT ip.pedido_id, ip.cantidad, ip.nombre, ip.tamano,
+SELECT ip.pedido_id, ip.cantidad, ip.nombre, ip.tamano, ip.aclaraciones, ip.detalle, (ip.promo_id IS NOT NULL OR ip.detalle <> '')::bool AS es_promo,
        COALESCE((SELECT string_agg(e.nombre, ', ' ORDER BY e.id)
                  FROM item_pedido_extra e WHERE e.item_pedido_id = ip.id), '')::text AS extras
 FROM item_pedido ip

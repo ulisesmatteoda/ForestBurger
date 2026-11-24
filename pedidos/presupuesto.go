@@ -3,6 +3,7 @@ package pedidos
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	sqlc "forestburger/db/sqlc"
 )
@@ -17,9 +18,15 @@ type Presupuesto struct {
 
 // LineaPresupuesto es un renglón: el producto, sus extras y cuánto sale.
 type LineaPresupuesto struct {
-	Nombre   string
-	Tamano   string
-	Extras   []string // nombres de los extras de cada unidad
+	Nombre string
+	Tamano string
+	Extras []string // nombres de los extras de cada unidad
+	// ExtrasDetalle: "Cheddar x2" (con la cantidad de cada unidad), para el carrito del cliente.
+	ExtrasDetalle []string
+	Aclaraciones  string
+	// Detalle es lo que eligió el cliente en una promo ("Classic (simple) + Cheddar · …").
+	Detalle  string
+	EsPromo  bool
 	Cantidad int
 	Unidad   Centavos // precio de una unidad con sus extras ("$17.500 c/u")
 	Total    Centavos
@@ -38,11 +45,12 @@ func CalcularPresupuesto(ctx context.Context, db *sql.DB, n NuevoPedido) (Presup
 	p := Presupuesto{Cuentas: c}
 	for _, it := range items {
 		unidad, _ := CentavosDe(it.item.PrecioUnitario)
-		l := LineaPresupuesto{Nombre: it.item.Nombre, Tamano: it.item.Tamano, Cantidad: int(it.item.Cantidad)}
+		l := LineaPresupuesto{Nombre: it.item.Nombre, Tamano: it.item.Tamano, Cantidad: int(it.item.Cantidad), Aclaraciones: it.item.Aclaraciones, Detalle: it.item.Detalle, EsPromo: it.item.PromoID.Valid}
 		for _, e := range it.extras {
 			precio, _ := CentavosDe(e.PrecioUnitario)
 			unidad += Centavos(e.Cantidad) * precio
 			l.Extras = append(l.Extras, e.Nombre)
+			l.ExtrasDetalle = append(l.ExtrasDetalle, fmt.Sprintf("%s x%d", e.Nombre, e.Cantidad))
 		}
 		l.Unidad = unidad
 		l.Total = Centavos(l.Cantidad) * unidad

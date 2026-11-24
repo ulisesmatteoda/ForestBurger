@@ -24,6 +24,25 @@ func (a *API) Rutas(mux *http.ServeMux) {
 
 // RutasAuth registra el login y el logout, que son públicos.
 func (a *API) RutasAuth(mux *http.ServeMux) {
+	// La web del cliente: pública, sin sesión.
+	mux.HandleFunc("GET /{$}", a.Inicio)
+	mux.HandleFunc("GET /menu", a.Menu)
+	mux.HandleFunc("GET /menu/{id}", a.Burger)
+	mux.HandleFunc("POST /menu/{id}/armar", a.ArmarBurger)
+	mux.HandleFunc("POST /carrito", a.AgregarAlCarrito)
+	mux.HandleFunc("POST /carrito/rapido", a.CambiarRapido)
+	mux.HandleFunc("GET /promo/{id}", a.PromoArmar)
+	mux.HandleFunc("POST /promo/{id}/armar", a.ArmarPromo)
+	mux.HandleFunc("POST /carrito/promo", a.AgregarPromo)
+	mux.HandleFunc("GET /carrito", a.Carrito)
+	mux.HandleFunc("POST /carrito/linea", a.CambiarLinea)
+	mux.HandleFunc("POST /carrito/recalcular", a.RecalcularCarrito)
+	mux.HandleFunc("POST /carrito/revisar", a.RevisarCarrito)
+	mux.HandleFunc("GET /carrito/revisar", a.Revisar)
+	mux.HandleFunc("POST /pedido", a.ConfirmarPedido)
+	mux.HandleFunc("GET /pedido/{token}", a.Seguimiento)
+	mux.HandleFunc("GET /pedido/{token}/estado", a.EstadoSeguimiento)
+
 	mux.HandleFunc("GET /login", a.FormLogin)
 	mux.HandleFunc("POST /login", a.Login)
 	mux.HandleFunc("POST /logout", a.Logout)

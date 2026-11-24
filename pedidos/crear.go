@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -41,6 +42,8 @@ const (
 	letrasToken       = "abcdefghijkmnpqrstuvwxyz23456789" // sin 0/o ni 1/l, que se confunden al dictarlo
 	largoMaxCliente   = 100
 	largoMaxDireccion = 200
+	// LargoMaxAclaraciones es el tope de "sin cebolla, bien cocida…" de un ítem.
+	LargoMaxAclaraciones = 200
 )
 
 // NuevoPedido es lo que hace falta para crear un pedido. No lleva precios: los pone Crear con los
@@ -64,12 +67,30 @@ type NuevoPedido struct {
 	CreadoEn  time.Time
 }
 
-// NuevoItem es un producto del pedido, con su tamaño, cuántos, y los extras de cada unidad.
+// NuevoItem es un producto del pedido, con su tamaño, cuántos, los extras de cada unidad y lo que
+// pide el cliente para ese ítem ("sin cebolla").
 type NuevoItem struct {
+	ProductoID   int32
+	Tamano       string
+	Cantidad     int
+	Extras       []NuevoExtra
+	Aclaraciones string
+	// Promo: si viene, el ítem es una promo armada por el cliente (ProductoID y Extras no se usan;
+	// Cantidad es cuántas promos iguales).
+	Promo *NuevaPromo
+}
+
+// NuevaPromo es una promo con las hamburguesas que eligió el cliente ("Armá tu promo").
+type NuevaPromo struct {
+	PromoID  int32
+	Elegidas []Elegida
+}
+
+// Elegida es una hamburguesa de la promo: cuál, de qué tamaño y con qué extras (uno de cada uno).
+type Elegida struct {
 	ProductoID int32
 	Tamano     string
-	Cantidad   int
-	Extras     []NuevoExtra
+	Extras     []int32
 }
 
 type NuevoExtra struct {
@@ -206,6 +227,9 @@ func validarItems(items []NuevoItem) error {
 		if it.Tamano != TamanoSimple && it.Tamano != TamanoDoble {
 			return invalido("tamaño inválido %q", it.Tamano)
 		}
+		if len([]rune(it.Aclaraciones)) > LargoMaxAclaraciones {
+			return invalido("las aclaraciones son muy largas")
+		}
 		for _, e := range it.Extras {
 			if e.Cantidad < 1 {
 				return invalido("las cantidades de los extras tienen que ser al menos 1")
@@ -246,6 +270,15 @@ func armarItems(ctx context.Context, q *sqlc.Queries, nuevos []NuevoItem) ([]ite
 	items := make([]itemArmado, 0, len(nuevos))
 	lineas := make([]Linea, 0, len(nuevos))
 	for _, n := range nuevos {
+		if n.Promo != nil {
+			it, linea, err := armarPromo(ctx, q, n)
+			if err != nil {
+				return nil, nil, err
+			}
+			items = append(items, it)
+			lineas = append(lineas, linea)
+			continue
+		}
 		prod, err := q.GetProducto(ctx, n.ProductoID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil, invalido("el producto %d no existe", n.ProductoID)
@@ -274,6 +307,7 @@ func armarItems(ctx context.Context, q *sqlc.Queries, nuevos []NuevoItem) ([]ite
 			Tamano:         n.Tamano,
 			Cantidad:       int16(n.Cantidad),
 			PrecioUnitario: precio.Texto(),
+			Aclaraciones:   strings.TrimSpace(n.Aclaraciones),
 		}}
 		linea := Linea{Cantidad: n.Cantidad, Precio: precio}
 		for _, ne := range n.Extras {
@@ -303,6 +337,86 @@ func armarItems(ctx context.Context, q *sqlc.Queries, nuevos []NuevoItem) ([]ite
 		lineas = append(lineas, linea)
 	}
 	return items, lineas, nil
+}
+
+// armarPromo valida la promo armada por el cliente y la cotiza: el precio fijo de la promo más los
+// extras de cada hamburguesa. Tiene que estar activa y ser de hoy, con la cantidad justa de
+// hamburguesas, todas de la promo, disponibles y del tamaño que dice la promo.
+func armarPromo(ctx context.Context, q *sqlc.Queries, n NuevoItem) (itemArmado, Linea, error) {
+	np := n.Promo
+	pr, err := q.GetPromo(ctx, np.PromoID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return itemArmado{}, Linea{}, invalido("esa promo ya no existe")
+	}
+	if err != nil {
+		return itemArmado{}, Linea{}, err
+	}
+	hoy := int32(time.Now().In(Zona).Weekday())
+	if !pr.Activa || !slices.Contains(pr.Dias, hoy) {
+		return itemArmado{}, Linea{}, invalido("la promo %s no está disponible hoy", pr.Nombre)
+	}
+	if len(np.Elegidas) != int(pr.Cantidad) {
+		return itemArmado{}, Linea{}, invalido("en la promo %s se eligen %d hamburguesas", pr.Nombre, pr.Cantidad)
+	}
+	entran, err := q.ListProductosDePromo(ctx, pr.ID)
+	if err != nil {
+		return itemArmado{}, Linea{}, err
+	}
+	precio, err := CentavosDe(pr.Precio)
+	if err != nil {
+		return itemArmado{}, Linea{}, err
+	}
+	it := itemArmado{item: sqlc.CreateItemPedidoParams{
+		Nombre: pr.Nombre, Tamano: TamanoSimple, Cantidad: int16(n.Cantidad), PrecioUnitario: precio.Texto(),
+		PromoID: sql.NullInt32{Int32: pr.ID, Valid: true},
+	}}
+	linea := Linea{Cantidad: n.Cantidad, Precio: precio}
+	var partes []string
+	for _, e := range np.Elegidas {
+		if !slices.Contains(entran, e.ProductoID) {
+			return itemArmado{}, Linea{}, invalido("esa hamburguesa no entra en la promo %s", pr.Nombre)
+		}
+		prod, err := q.GetProducto(ctx, e.ProductoID)
+		if err != nil {
+			return itemArmado{}, Linea{}, err
+		}
+		if !prod.Disponible {
+			return itemArmado{}, Linea{}, invalido("%s está agotado", prod.Nombre)
+		}
+		tamano := e.Tamano
+		if pr.Tamano != "cliente" {
+			tamano = pr.Tamano // el de la promo, diga lo que diga el form
+		}
+		if tamano != TamanoSimple && tamano != TamanoDoble {
+			return itemArmado{}, Linea{}, invalido("tamaño inválido %q", tamano)
+		}
+		if tamano == TamanoDoble && !prod.PrecioDoble.Valid {
+			return itemArmado{}, Linea{}, invalido("%s no tiene versión doble", prod.Nombre)
+		}
+		parte := fmt.Sprintf("%s (%s)", prod.Nombre, tamano)
+		for _, eid := range e.Extras {
+			ext, err := q.GetExtra(ctx, eid)
+			if errors.Is(err, sql.ErrNoRows) || (err == nil && !ext.Disponible) {
+				return itemArmado{}, Linea{}, invalido("ese extra no está disponible")
+			}
+			if err != nil {
+				return itemArmado{}, Linea{}, err
+			}
+			pe, err := CentavosDe(ext.Precio)
+			if err != nil {
+				return itemArmado{}, Linea{}, err
+			}
+			it.extras = append(it.extras, sqlc.CreateItemPedidoExtraParams{
+				ExtraID: sql.NullInt32{Int32: ext.ID, Valid: true}, Nombre: fmt.Sprintf("%s (%s)", ext.Nombre, prod.Nombre),
+				Cantidad: 1, PrecioUnitario: pe.Texto(),
+			})
+			linea.Extras = append(linea.Extras, LineaExtra{Cantidad: 1, Precio: pe})
+			parte += " + " + ext.Nombre
+		}
+		partes = append(partes, parte)
+	}
+	it.item.Detalle = strings.Join(partes, " · ")
+	return it, linea, nil
 }
 
 // guardarEventosIniciales arma el historial con el que nace el pedido: siempre "recibido", y si ya

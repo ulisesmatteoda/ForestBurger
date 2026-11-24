@@ -176,3 +176,52 @@ func TestCrear_BorrarProductoYExtraNoCambiaElPedido(t *testing.T) {
 		t.Errorf("el total no tendría que cambiar: %s", guardado.Total)
 	}
 }
+
+// Una promo armada por el cliente: el precio de la promo más los extras de cada hamburguesa, con
+// lo elegido en el detalle. Con "el cliente elige", la doble cuesta lo mismo.
+func TestCrear_Promo(t *testing.T) {
+	db := basetest.Abrir(t)
+	c := cargarCatalogo(t, db)
+	ctx := context.Background()
+	q := sqlc.New(db)
+	pr, err := q.CreatePromo(ctx, sqlc.CreatePromoParams{Nombre: "2 a elección", Precio: "29000", Cantidad: 2, Tamano: "cliente", Dias: []int32{0, 1, 2, 3, 4, 5, 6}, Activa: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q.AddProductoAPromo(ctx, sqlc.AddProductoAPromoParams{PromoID: pr.ID, ProductoID: c.classic.ID})
+	promo := func(elegidas ...Elegida) NuevoPedido {
+		return NuevoPedido{Cliente: "Ulises", Origen: OrigenWeb, Entrega: EntregaRetiro, Pago: PagoEfectivo,
+			Items: []NuevoItem{{Tamano: TamanoSimple, Cantidad: 1, Promo: &NuevaPromo{PromoID: pr.ID, Elegidas: elegidas}}}}
+	}
+	p, err := Crear(ctx, db, promo(Elegida{ProductoID: c.classic.ID, Tamano: TamanoDoble, Extras: []int32{c.cheddar.ID}}, Elegida{ProductoID: c.classic.ID, Tamano: TamanoSimple}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Total != "30000.00" {
+		t.Errorf("total = %s; quiero 29.000 + 1.000 de cheddar", p.Total)
+	}
+	items, _ := q.ListItemsPedido(ctx, p.ID)
+	if len(items) != 1 || items[0].Nombre != "2 a elección" || !items[0].PromoID.Valid || items[0].Detalle != "Classic (doble) + Cheddar · Classic (simple)" {
+		t.Errorf("ítem de la promo: %+v", items)
+	}
+	extras, _ := q.ListExtrasItemsPedido(ctx, p.ID)
+	if len(extras) != 1 || extras[0].Nombre != "Cheddar (Classic)" {
+		t.Errorf("extras: %+v", extras)
+	}
+
+	casos := map[string]NuevoPedido{
+		"faltan hamburguesas": promo(Elegida{ProductoID: c.classic.ID, Tamano: TamanoSimple}),
+		"una que no entra":    promo(Elegida{ProductoID: c.classic.ID, Tamano: TamanoSimple}, Elegida{ProductoID: c.gaseosa.ID, Tamano: TamanoSimple}),
+		"un extra apagado":    promo(Elegida{ProductoID: c.classic.ID, Tamano: TamanoSimple, Extras: []int32{c.panceta.ID}}, Elegida{ProductoID: c.classic.ID, Tamano: TamanoSimple}),
+	}
+	for nombre, n := range casos {
+		if _, err := Crear(ctx, db, n); !errors.Is(err, ErrPedidoInvalido) {
+			t.Errorf("%s: quiero ErrPedidoInvalido, vino %v", nombre, err)
+		}
+	}
+	// Pausada no se puede pedir.
+	q.UpdateActivaPromo(ctx, sqlc.UpdateActivaPromoParams{ID: pr.ID, Activa: false})
+	if _, err := Crear(ctx, db, promo(Elegida{ProductoID: c.classic.ID}, Elegida{ProductoID: c.classic.ID})); !errors.Is(err, ErrPedidoInvalido) || !strings.Contains(err.Error(), "no está disponible hoy") {
+		t.Errorf("una promo pausada: %v", err)
+	}
+}

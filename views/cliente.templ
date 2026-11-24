@@ -1,0 +1,940 @@
+package views
+
+import "fmt"
+
+// La web del cliente: inicio, menú, burger con extras, carrito, revisar y seguimiento. Pensada
+// para el celu (como el Figma, página "Pantallas"); en la compu queda centrada y angosta. Sin JS
+// propio: htmx para lo que se recalcula y panel.js solo para COPIAR.
+
+// VersionCliente es el hash de static/cliente.css (para que el navegador no use uno viejo).
+var VersionCliente string
+
+// ---------- datos de las pantallas ----------
+
+type VistaInicio struct {
+	Abierto  bool
+	Horarios []string // "Martes a jueves: 20:00 a 00:00"
+}
+
+// BarraPedido es el resumen de abajo del menú ("HACER PEDIDO · 4 productos · $63.000").
+type BarraPedido struct {
+	Unidades int
+	Total    string
+}
+
+type PromoMenu struct {
+	ID                                        int32
+	Nombre, Descripcion, Precio, Ahorro, Foto string
+}
+
+// VistaPromoArmar es "Armá tu promo": las hamburguesas que entran (con − n +), el avance, y cada
+// una de las elegidas con su tamaño (si es a elección) y sus extras.
+type VistaPromoArmar struct {
+	ID                        int32
+	Nombre, Texto, Foto       string
+	Precio                    string
+	Cantidad, Elegidas        int
+	ElegirTamano              bool
+	Opciones                  []OpcionPromo
+	Slots                     []SlotPromo
+	ExtrasTotal, Total        string
+	Abierto                   bool
+}
+
+type OpcionPromo struct {
+	ID                  int32
+	Nombre, Descripcion string
+	Cuantas             int
+	Agotado             bool
+}
+
+type SlotPromo struct {
+	Producto      int32
+	Nombre        string
+	Tamano        string
+	TieneDoble    bool
+	Extras        []ExtraSlot
+	ExtrasIDs     string // "1,3", viaja oculto en el form
+	ExtrasTotal   string // "" si no lleva extras
+}
+
+type ExtraSlot struct {
+	ID             int32
+	Nombre, Precio string
+	Activo         bool
+}
+
+// ProductoMenu es una fila del menú. EnPedido: cuántos hay en el carrito.
+type ProductoMenu struct {
+	ID                  int32
+	Nombre, Descripcion string
+	Simple, Doble       string // Doble vacío: no tiene doble
+	Agotado             bool
+	EnPedido            int
+}
+
+// SeccionMenu es una categoría del menú. Rapida: bebidas y acompañamientos se suman con − n +
+// en la misma fila; las hamburguesas abren su pantalla (tamaño, extras, aclaraciones).
+type SeccionMenu struct {
+	Ancla, Chip, Titulo, Nota string
+	Rapida                    bool
+	Productos                 []ProductoMenu
+}
+
+type VistaMenu struct {
+	Abierto   bool
+	Promos    []PromoMenu
+	Secciones []SeccionMenu
+	Barra     BarraPedido
+}
+
+type ExtraBurger struct {
+	ID       int32
+	Nombre   string
+	Precio   string
+	Cantidad int
+}
+
+type VistaBurger struct {
+	ID                  int32
+	Nombre, Descripcion string
+	Foto                string
+	Simple, Doble       string
+	Tamano              string
+	Extras              []ExtraBurger
+	Aclaraciones        string
+	Cantidad            int
+	Total               string
+	Abierto             bool
+	Barra               BarraPedido
+}
+
+// CliLinea es un renglón del pedido del cliente: "Classic · Simple", "+ Cheddar x1", “sin cebolla”.
+type CliLinea struct {
+	Titulo       string
+	Detalle      []string
+	Aclaraciones string
+	Cantidad     int
+	Total        string
+}
+
+type DatosVista struct {
+	Nombre, Telefono, Entrega, Direccion, Pago, Notas string
+}
+
+type VistaCarrito struct {
+	Abierto        bool
+	Lineas         []CliLinea
+	Avisos         []string // renglones que se sacaron (se agotó, ya no existe)
+	Envio, Total   string
+	Datos          DatosVista
+	DeliveryActivo bool
+	Error          string
+	Barra          BarraPedido
+}
+
+type PasoSeguimiento struct {
+	Texto, Hora string
+	Hecho       bool
+}
+
+type VistaSeguimiento struct {
+	ID              int32
+	Token           string
+	Estado          string
+	Titulo, Texto   string
+	Pasos           []PasoSeguimiento
+	Activa          bool // todavía puede cambiar: la página se actualiza sola
+	Transferencia   bool
+	Alias, Titular  string
+	Total, Envio    string
+	Comprobante     string // wa.me al local con "Comprobante del pedido #18"
+	Link, Compartir string
+	Lineas          []CliLinea
+	Entrega         string
+	Ayuda           string // wa.me al local
+}
+
+// ---------- el documento ----------
+
+templ DocumentoCliente(titulo string) {
+	<!DOCTYPE html>
+	<html lang="es">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+			<title>{ titulo } · ForestBurger</title>
+			<meta name="theme-color" content="#023320"/>
+			<link rel="icon" type="image/png" href="/static/icons/icon-192.png"/>
+			<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+			<link rel="preconnect" href="https://fonts.googleapis.com"/>
+			<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Semi+Condensed:wght@700;800&display=swap" rel="stylesheet"/>
+			<link rel="stylesheet" href={ "/static/cliente.css?v=" + VersionCliente }/>
+		</head>
+		<body class="cliente">
+			<div class="cli">
+				{ children... }
+			</div>
+			<script src={ "/static/panel.js?v=" + VersionPanelJS } defer></script>
+		</body>
+	</html>
+}
+
+templ marcaCliente() {
+	<a href="/" class="cli-marca">
+		<img src="/static/img/pinos.svg" alt="" width="30" height="33"/>
+		<span>FORESTBURGER</span>
+	</a>
+}
+
+// headerMenu es la barra de arriba del menú: la marca y el carrito con la cantidad.
+templ headerMenu(b BarraPedido) {
+	<header class="cli-header">
+		@marcaCliente()
+		@BotonCarrito(b, false)
+	</header>
+}
+
+templ BotonCarrito(b BarraPedido, oob bool) {
+	<a
+		id="boton-carrito"
+		href="/carrito"
+		class="boton-carrito"
+		aria-label={ fmt.Sprintf("Tu pedido: %d productos", b.Unidades) }
+		if oob {
+			hx-swap-oob="true"
+		}
+	>
+		@IconoCarrito()
+		if b.Unidades > 0 {
+			<span class="boton-carrito-n">{ fmt.Sprint(b.Unidades) }</span>
+		}
+	</a>
+}
+
+// BarraPedidoAbajo es "HACER PEDIDO · 4 productos · $63.000" (vacía si no hay nada).
+templ BarraPedidoAbajo(b BarraPedido, oob bool) {
+	<div
+		id="barra-pedido"
+		class="cli-barra-abajo"
+		if oob {
+			hx-swap-oob="true"
+		}
+	>
+		if b.Unidades > 0 {
+			<a href="/carrito" class="cli-boton cli-boton-pedido">
+				<span>HACER PEDIDO</span>
+				<span class="cli-boton-detalle">{ unidadesTexto(b.Unidades) } · { formatPrecio(b.Total) }</span>
+			</a>
+		}
+	</div>
+}
+
+templ volver(href string) {
+	<a href={ templ.URL(href) } class="cli-volver" aria-label="Volver">
+		@IconoFlecha()
+	</a>
+}
+
+// ---------- 1 · Inicio ----------
+
+templ InicioPage(v VistaInicio) {
+	@DocumentoCliente("Inicio") {
+		<main class="cli-inicio">
+			<div class="cli-inicio-marca">
+				<img src="/static/img/logoForestburger.svg" alt="ForestBurger" class="cli-inicio-logo"/>
+				if v.Abierto {
+					<h1>Smash burgers en Mar del Plata</h1>
+				}
+			</div>
+			if !v.Abierto {
+				<section class="cli-cartel">
+					<h1>AHORA ESTAMOS CERRADOS</h1>
+					<p>No estamos tomando pedidos. Volvé cuando abramos.</p>
+					<ul class="cli-horarios">
+						for _, h := range v.Horarios {
+							<li>{ h }</li>
+						}
+					</ul>
+				</section>
+			}
+			<div class="cli-inicio-accion">
+				if v.Abierto {
+					<p>Armá tu pedido acá y seguilo en vivo hasta que llegue.</p>
+					<a href="/menu" class="cli-boton">VER EL MENÚ</a>
+				} else {
+					<a href="/menu" class="cli-boton cli-boton-secundario">VER EL MENÚ</a>
+					<p class="cli-chico">Podés mirar los precios, pero no armar el pedido.</p>
+				}
+			</div>
+		</main>
+	}
+}
+
+// ---------- 2 · Menú ----------
+
+templ MenuPage(m VistaMenu) {
+	@DocumentoCliente("Menú") {
+		<div class="cli-arriba">
+			@headerMenu(m.Barra)
+			<nav class="cli-chips" aria-label="Categorías">
+				if len(m.Promos) > 0 {
+					<a href="#promos" class="cli-chip">Promos</a>
+				}
+				for _, s := range m.Secciones {
+					<a href={ templ.URL("#" + s.Ancla) } class="cli-chip">{ s.Chip }</a>
+				}
+			</nav>
+		</div>
+		<main class="cli-menu">
+			if !m.Abierto {
+				<p class="cli-aviso">Ahora estamos cerrados. Podés mirar los precios, pero no armar el pedido.</p>
+			}
+			if len(m.Promos) > 0 {
+				<section id="promos" class="cli-seccion">
+					<div class="cli-seccion-titulo"><h2>PROMOS</h2><span>HOY</span></div>
+					for _, p := range m.Promos {
+						<article class="cli-promo">
+							<div class="cli-promo-foto">
+								if p.Foto != "" {
+									<img src={ templ.URL(p.Foto) } alt="" loading="lazy"/>
+								}
+							</div>
+							<div class="cli-promo-texto">
+								<span class="cli-badge">PROMO</span>
+								<h3>{ p.Nombre }</h3>
+								<p>{ p.Descripcion }</p>
+								<div class="cli-promo-pie">
+									<div>
+										<strong class="cli-promo-precio">{ formatPrecio(p.Precio) }</strong>
+										if p.Ahorro != "" {
+											<span class="cli-promo-ahorro">Ahorrás hasta { formatPrecio(p.Ahorro) }</span>
+										}
+									</div>
+									if m.Abierto {
+										<a href={ templ.URL(fmt.Sprintf("/promo/%d", p.ID)) } class="cli-boton cli-boton-armar">ARMAR PROMO</a>
+									}
+								</div>
+							</div>
+						</article>
+					}
+				</section>
+			}
+			for _, s := range m.Secciones {
+				<section id={ s.Ancla } class="cli-seccion">
+					<div class="cli-seccion-titulo">
+						<h2>{ s.Titulo }</h2>
+						if !s.Rapida {
+							<span class="cli-columnas">SIMPLE · DOBLE</span>
+						}
+					</div>
+					if s.Nota != "" {
+						<p class="cli-nota">{ s.Nota }</p>
+					}
+					for _, p := range s.Productos {
+						if s.Rapida {
+							@FilaRapida(p, m.Abierto)
+						} else {
+							@filaBurger(p, m.Abierto)
+						}
+					}
+				</section>
+			}
+		</main>
+		if m.Abierto {
+			@BarraPedidoAbajo(m.Barra, false)
+		}
+	}
+}
+
+// filaBurger es una hamburguesa del menú: el "+" abre su pantalla.
+templ filaBurger(p ProductoMenu, abierto bool) {
+	<div class={ "cli-fila", templ.KV("agotado", p.Agotado) }>
+		<div class="cli-fila-texto">
+			<h3>
+				{ p.Nombre }
+				if p.EnPedido > 0 {
+					<span class="cli-en-pedido">{ fmt.Sprint(p.EnPedido) } en el pedido</span>
+				}
+			</h3>
+			<p>{ p.Descripcion }</p>
+		</div>
+		<div class="cli-precios">
+			<span>{ numeroPrecio(p.Simple) }</span>
+			if p.Doble != "" {
+				<span>{ numeroPrecio(p.Doble) }</span>
+			}
+		</div>
+		if p.Agotado {
+			<span class="cli-agotado">AGOTADO</span>
+		} else if abierto {
+			<a href={ templ.URL(fmt.Sprintf("/menu/%d", p.ID)) } class="cli-mas" aria-label={ "Agregar " + p.Nombre }>+</a>
+		}
+	</div>
+}
+
+// FilaRapida es una bebida o un acompañamiento: − n + en la misma fila. Cada toque guarda en el
+// carrito y devuelve la fila, más la barra de abajo y el botón del carrito por OOB.
+templ FilaRapida(p ProductoMenu, abierto bool) {
+	<div id={ fmt.Sprintf("rapida-%d", p.ID) } class={ "cli-fila", "cli-fila-rapida", templ.KV("agotado", p.Agotado) }>
+		<div class="cli-fila-texto">
+			<h3>{ p.Nombre }</h3>
+			if p.Descripcion != "" {
+				<p>{ p.Descripcion }</p>
+			}
+		</div>
+		<span class="cli-precio-unico">{ numeroPrecio(p.Simple) }</span>
+		if p.Agotado {
+			<span class="cli-agotado">AGOTADO</span>
+		} else if abierto {
+			<div class="cli-stepper">
+				<button type="button" hx-post="/carrito/rapido" hx-vals={ fmt.Sprintf(`{"producto":"%d","paso":"-1"}`, p.ID) } hx-target={ fmt.Sprintf("#rapida-%d", p.ID) } hx-swap="outerHTML" disabled?={ p.EnPedido == 0 } aria-label={ "Uno menos de " + p.Nombre }>−</button>
+				<span>{ fmt.Sprint(p.EnPedido) }</span>
+				<button type="button" class="mas" hx-post="/carrito/rapido" hx-vals={ fmt.Sprintf(`{"producto":"%d","paso":"1"}`, p.ID) } hx-target={ fmt.Sprintf("#rapida-%d", p.ID) } hx-swap="outerHTML" aria-label={ "Uno más de " + p.Nombre }>+</button>
+			</div>
+		}
+	</div>
+}
+
+// ---------- 3 · Burger con extras ----------
+
+templ BurgerPage(b VistaBurger) {
+	@DocumentoCliente(b.Nombre) {
+		@FormBurger(b)
+	}
+}
+
+// burgerArma: cada toque (tamaño, extras, cantidad) pide el form recalculado. Lo escrito en las
+// aclaraciones viaja con el form, así que no se pierde.
+func burgerArma(id int32) templ.Attributes {
+	return templ.Attributes{
+		"hx-post":   fmt.Sprintf("/menu/%d/armar", id),
+		"hx-target": "#form-burger",
+		"hx-select": "#form-burger",
+		"hx-swap":   "outerHTML",
+	}
+}
+
+templ FormBurger(b VistaBurger) {
+	<form id="form-burger" class="cli-burger" method="post" action="/carrito">
+		// Enter en las aclaraciones no agrega: el botón "por defecto" está apagado.
+		<button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>
+		<input type="hidden" name="producto" value={ fmt.Sprint(b.ID) }/>
+		<input type="hidden" name="cantidad" value={ fmt.Sprint(b.Cantidad) }/>
+		<div class="cli-foto">
+			if b.Foto != "" {
+				<img src={ templ.URL(b.Foto) } alt=""/>
+			}
+			@volver("/menu")
+		</div>
+		<div class="cli-burger-cuerpo">
+			<h1>{ b.Nombre }</h1>
+			<p class="cli-desc">{ b.Descripcion }</p>
+			if b.Doble != "" {
+				<fieldset class="cli-grupo" { burgerArma(b.ID)... } hx-trigger="change">
+					<legend>TAMAÑO</legend>
+					<div class="cli-tamanos">
+						@opcionTamano("simple", "Simple", b.Simple, b.Tamano)
+						@opcionTamano("doble", "Doble", b.Doble, b.Tamano)
+					</div>
+				</fieldset>
+			} else {
+				<input type="hidden" name="tamano" value="simple"/>
+			}
+			if len(b.Extras) > 0 {
+				<div class="cli-grupo">
+					<span class="cli-grupo-titulo">EXTRAS</span>
+					for _, e := range b.Extras {
+						<div class="cli-extra">
+							<div>
+								<strong>{ e.Nombre }</strong>
+								<span>+ { formatPrecio(e.Precio) }</span>
+							</div>
+							<input type="hidden" name={ fmt.Sprintf("extra_%d", e.ID) } value={ fmt.Sprint(e.Cantidad) }/>
+							<div class="cli-stepper">
+								<button type="button" hx-vals={ fmt.Sprintf(`{"extra":"%d","paso":"-1"}`, e.ID) } disabled?={ e.Cantidad == 0 } aria-label={ "Sacar " + e.Nombre } { burgerArma(b.ID)... }>−</button>
+								<span>{ fmt.Sprint(e.Cantidad) }</span>
+								<button type="button" class="mas" hx-vals={ fmt.Sprintf(`{"extra":"%d","paso":"1"}`, e.ID) } disabled?={ e.Cantidad >= 5 } aria-label={ "Sumar " + e.Nombre } { burgerArma(b.ID)... }>+</button>
+							</div>
+						</div>
+					}
+				</div>
+			}
+			<label class="cli-campo">
+				<span>Aclaraciones</span>
+				<input type="text" name="aclaraciones" value={ b.Aclaraciones } maxlength="200" placeholder="Ej.: sin cebolla"/>
+			</label>
+		</div>
+		if b.Abierto {
+			<div class="cli-barra-abajo">
+				<div class="cli-barra-fila">
+					<div class="cli-stepper cli-stepper-grande">
+						<button type="button" hx-vals='{"cantidad_paso":"-1"}' disabled?={ b.Cantidad <= 1 } aria-label="Una menos" { burgerArma(b.ID)... }>−</button>
+						<span>{ fmt.Sprint(b.Cantidad) }</span>
+						<button type="button" class="mas" hx-vals='{"cantidad_paso":"1"}' disabled?={ b.Cantidad >= 20 } aria-label="Una más" { burgerArma(b.ID)... }>+</button>
+					</div>
+					<button type="submit" class="cli-boton cli-boton-pedido">
+						<span>AGREGAR</span>
+						<span>{ formatPrecio(b.Total) }</span>
+					</button>
+				</div>
+			</div>
+		}
+	</form>
+}
+
+templ opcionTamano(valor, nombre, precio, elegido string) {
+	<label class="cli-opcion">
+		<input type="radio" name="tamano" value={ valor } checked?={ valor == elegido }/>
+		<strong>{ nombre }</strong>
+		<span>{ formatPrecio(precio) }</span>
+	</label>
+}
+
+// ---------- 2b / 2c · Armá tu promo ----------
+
+templ PromoArmarPage(v VistaPromoArmar) {
+	@DocumentoCliente(v.Nombre) {
+		@FormPromoArmar(v)
+	}
+}
+
+// promoArma: cada toque (sumar o sacar una hamburguesa, el tamaño, un extra) pide el form
+// recalculado. Lo elegido viaja oculto en el form.
+func promoArma(id int32, vals string) templ.Attributes {
+	return templ.Attributes{
+		"hx-post": fmt.Sprintf("/promo/%d/armar", id), "hx-vals": vals,
+		"hx-target": "#form-promo-armar", "hx-select": "#form-promo-armar", "hx-swap": "outerHTML",
+	}
+}
+
+templ FormPromoArmar(v VistaPromoArmar) {
+	<form id="form-promo-armar" class="cli-burger" method="post" action="/carrito/promo">
+		<input type="hidden" name="promo" value={ fmt.Sprint(v.ID) }/>
+		for i, s := range v.Slots {
+			<input type="hidden" name={ fmt.Sprintf("slot_%d_producto", i) } value={ fmt.Sprint(s.Producto) }/>
+			<input type="hidden" name={ fmt.Sprintf("slot_%d_tamano", i) } value={ s.Tamano }/>
+			<input type="hidden" name={ fmt.Sprintf("slot_%d_extras", i) } value={ s.ExtrasIDs }/>
+		}
+		<div class="cli-foto">
+			if v.Foto != "" {
+				<img src={ templ.URL(v.Foto) } alt=""/>
+			}
+			@volver("/menu")
+		</div>
+		<div class="cli-burger-cuerpo">
+			<span class="cli-badge cli-badge-claro">PROMO</span>
+			<h1>{ v.Nombre }</h1>
+			<p class="cli-desc">{ v.Texto }</p>
+			<div class="cli-avance">
+				<div class="cli-avance-fila">
+					if v.Elegidas < v.Cantidad {
+						<span>Te falta { fmt.Sprint(v.Cantidad - v.Elegidas) }</span>
+					} else {
+						<span>¡Listo! Ya elegiste todas</span>
+					}
+					<strong>{ fmt.Sprint(v.Elegidas) } de { fmt.Sprint(v.Cantidad) }</strong>
+				</div>
+				<div class="cli-avance-barra"><span style={ fmt.Sprintf("--avance: %d", v.Elegidas*100/max(v.Cantidad, 1)) }></span></div>
+			</div>
+			<div class="cli-grupo">
+				<span class="cli-grupo-titulo">ELEGÍ TUS HAMBURGUESAS</span>
+				for _, o := range v.Opciones {
+					<div class={ "cli-extra", templ.KV("agotado", o.Agotado) }>
+						<div>
+							<strong>
+								{ o.Nombre }
+								if o.Cuantas > 0 {
+									<i class="cli-punto" aria-hidden="true"></i>
+								}
+							</strong>
+							<span>{ o.Descripcion }</span>
+						</div>
+						if o.Agotado {
+							<span class="cli-agotado">AGOTADO</span>
+						} else {
+							<div class="cli-stepper">
+								<button type="button" disabled?={ o.Cuantas == 0 } aria-label={ "Sacar una " + o.Nombre } { promoArma(v.ID, fmt.Sprintf(`{"accion":"menos","producto":"%d"}`, o.ID))... }>−</button>
+								<span>{ fmt.Sprint(o.Cuantas) }</span>
+								<button type="button" class="mas" disabled?={ v.Elegidas >= v.Cantidad } aria-label={ "Sumar una " + o.Nombre } { promoArma(v.ID, fmt.Sprintf(`{"accion":"mas","producto":"%d"}`, o.ID))... }>+</button>
+							</div>
+						}
+					</div>
+				}
+			</div>
+			if len(v.Slots) > 0 {
+				<div class="cli-grupo">
+					<span class="cli-grupo-titulo">TU PROMO</span>
+					for i, s := range v.Slots {
+						<div class="cli-slot">
+							<div class="cli-slot-cabecera">
+								<strong>{ fmt.Sprint(i + 1) } · { s.Nombre } ({ s.Tamano })</strong>
+								if s.ExtrasTotal != "" {
+									<span>+ { formatPrecio(s.ExtrasTotal) }</span>
+								} else {
+									<span>Sin extras</span>
+								}
+							</div>
+							if v.ElegirTamano {
+								<span class="cli-slot-titulo">Tamaño (mismo precio)</span>
+								<div class="cli-chips-slot">
+									<button type="button" class={ "cli-chip-slot", templ.KV("activo", s.Tamano == "simple") } { promoArma(v.ID, fmt.Sprintf(`{"accion":"tamano","i":"%d","t":"simple"}`, i))... }>Simple</button>
+									if s.TieneDoble {
+										<button type="button" class={ "cli-chip-slot", templ.KV("activo", s.Tamano == "doble") } { promoArma(v.ID, fmt.Sprintf(`{"accion":"tamano","i":"%d","t":"doble"}`, i))... }>Doble</button>
+									}
+								</div>
+							}
+							if len(s.Extras) > 0 {
+								<span class="cli-slot-titulo">Extras (opcional)</span>
+								<div class="cli-chips-slot">
+									for _, e := range s.Extras {
+										<button type="button" class={ "cli-chip-slot", templ.KV("activo", e.Activo) } aria-pressed={ fmt.Sprint(e.Activo) } { promoArma(v.ID, fmt.Sprintf(`{"accion":"extra","i":"%d","extra":"%d"}`, i, e.ID))... }>{ e.Nombre } +{ formatPrecio(e.Precio) }</button>
+									}
+								</div>
+							}
+						</div>
+					}
+					<p class="cli-chico">Los extras se suman al precio de la promo. Si querés algo sin cebolla o algún cambio, contalo en las notas del carrito.</p>
+				</div>
+			}
+		</div>
+		if v.Abierto {
+			<div class="cli-barra-abajo">
+				<button type="submit" class="cli-boton cli-boton-pedido" disabled?={ v.Elegidas < v.Cantidad }>
+					<span>AGREGAR AL PEDIDO</span>
+					<span>{ formatPrecio(v.Total) }</span>
+				</button>
+				<p class="cli-chico cli-centro">
+					if v.Elegidas < v.Cantidad {
+						Elegí { fmt.Sprint(v.Cantidad - v.Elegidas) } más para agregarla
+					} else if v.ExtrasTotal != "" {
+						Promo { formatPrecio(v.Precio) } + extras { formatPrecio(v.ExtrasTotal) }
+					} else {
+						Promo { formatPrecio(v.Precio) }
+					}
+				</p>
+			</div>
+		}
+	</form>
+}
+
+// ---------- 4 · Tu pedido ----------
+
+templ CarritoPage(c VistaCarrito) {
+	@DocumentoCliente("Tu pedido") {
+		<header class="cli-header-volver">
+			@volver("/menu")
+			<h1>TU PEDIDO</h1>
+		</header>
+		@FormCarrito(c)
+	}
+}
+
+// carritoArma: el − n + de cada renglón y el cambio de entrega piden el form recalculado (los
+// datos escritos viajan con el form y vuelven igual).
+func carritoArma(ruta string) templ.Attributes {
+	return templ.Attributes{"hx-post": ruta, "hx-target": "#form-carrito", "hx-select": "#form-carrito", "hx-swap": "outerHTML"}
+}
+
+templ FormCarrito(c VistaCarrito) {
+	<form id="form-carrito" class="cli-carrito" method="post" action="/carrito/revisar">
+		<button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>
+		for _, a := range c.Avisos {
+			<p class="cli-aviso">{ a }</p>
+		}
+		if len(c.Lineas) == 0 {
+			<div class="cli-vacio">
+				<p>Todavía no agregaste nada.</p>
+				<a href="/menu" class="cli-boton">VER EL MENÚ</a>
+			</div>
+		} else {
+			<div class="cli-lineas">
+				for i, l := range c.Lineas {
+					<div class="cli-linea">
+						<div class="cli-linea-texto">
+							<strong>{ l.Titulo }</strong>
+							for _, d := range l.Detalle {
+								<span>{ d }</span>
+							}
+							if l.Aclaraciones != "" {
+								<em>“{ l.Aclaraciones }”</em>
+							}
+							<strong class="cli-linea-total">{ formatPrecio(l.Total) }</strong>
+						</div>
+						<div class="cli-stepper">
+							<button type="button" hx-vals={ fmt.Sprintf(`{"i":"%d","paso":"-1"}`, i) } aria-label={ "Uno menos de " + l.Titulo } { carritoArma("/carrito/linea")... }>−</button>
+							<span>{ fmt.Sprint(l.Cantidad) }</span>
+							<button type="button" class="mas" hx-vals={ fmt.Sprintf(`{"i":"%d","paso":"1"}`, i) } aria-label={ "Uno más de " + l.Titulo } { carritoArma("/carrito/linea")... }>+</button>
+						</div>
+					</div>
+				}
+			</div>
+			<div class="cli-cuentas">
+				if c.Envio != "" {
+					<div><span>Envío</span><strong>{ formatPrecio(c.Envio) }</strong></div>
+				}
+				<div class="cli-total"><span>TOTAL</span><strong>{ formatPrecio(c.Total) }</strong></div>
+			</div>
+			<section class="cli-datos">
+				<h2>TUS DATOS</h2>
+				if c.Error != "" {
+					<p class="cli-error" role="alert">{ c.Error }</p>
+				}
+				<label class="cli-campo">
+					<span>Nombre</span>
+					<input type="text" name="nombre" value={ c.Datos.Nombre } maxlength="100" autocomplete="name"/>
+				</label>
+				<label class="cli-campo">
+					<span>Teléfono</span>
+					<input type="tel" name="telefono" value={ c.Datos.Telefono } maxlength="20" autocomplete="tel" placeholder="223 555 1234"/>
+				</label>
+				<fieldset class="cli-campo" { carritoArma("/carrito/recalcular")... } hx-trigger="change">
+					<legend>Entrega</legend>
+					<div class="cli-opciones">
+						if c.DeliveryActivo {
+							@opcionDato("entrega", "delivery", "Delivery", c.Datos.Entrega)
+						}
+						@opcionDato("entrega", "retiro", "Retiro en el local", c.Datos.Entrega)
+					</div>
+				</fieldset>
+				if c.Datos.Entrega == "delivery" {
+					<label class="cli-campo">
+						<span>Dirección</span>
+						<input type="text" name="direccion" value={ c.Datos.Direccion } maxlength="200" autocomplete="street-address" placeholder="Calle, número, piso"/>
+					</label>
+				}
+				<fieldset class="cli-campo">
+					<legend>Forma de pago</legend>
+					<div class="cli-opciones">
+						@opcionDato("pago", "efectivo", "Efectivo", c.Datos.Pago)
+						@opcionDato("pago", "transferencia", "Transferencia", c.Datos.Pago)
+					</div>
+				</fieldset>
+				<label class="cli-campo">
+					<span>Notas para el local</span>
+					<input type="text" name="notas" value={ c.Datos.Notas } maxlength="200" placeholder="Ej.: tocar timbre 2B"/>
+				</label>
+			</section>
+			<div class="cli-barra-abajo">
+				if c.Abierto {
+					<button type="submit" class="cli-boton">REVISAR PEDIDO</button>
+				} else {
+					<p class="cli-chico">Ahora estamos cerrados: no podemos tomar el pedido.</p>
+				}
+			</div>
+		}
+	</form>
+}
+
+templ opcionDato(nombre, valor, texto, elegido string) {
+	<label class="cli-opcion">
+		<input type="radio" name={ nombre } value={ valor } checked?={ valor == elegido }/>
+		<strong>{ texto }</strong>
+	</label>
+}
+
+// ---------- 5 · Revisá tu pedido ----------
+
+templ RevisarPage(c VistaCarrito) {
+	@DocumentoCliente("Revisá tu pedido") {
+		<header class="cli-header-volver">
+			@volver("/carrito")
+			<h1>REVISÁ TU PEDIDO</h1>
+		</header>
+		<main class="cli-revisar">
+			<p class="cli-desc">Fijate que esté todo bien antes de mandarlo al local.</p>
+			<div class="cli-subtitulo"><h2>LO QUE PEDISTE</h2><a href="/carrito">Modificar</a></div>
+			@lineasResumen(c.Lineas, c.Envio, c.Total)
+			<div class="cli-subtitulo"><h2>TUS DATOS</h2><a href="/carrito">Modificar</a></div>
+			<dl class="cli-dl">
+				<dt>Nombre</dt><dd>{ c.Datos.Nombre }</dd>
+				<dt>Teléfono</dt><dd>{ c.Datos.Telefono }</dd>
+				<dt>Entrega</dt><dd>{ textoEntregaCliente(c.Datos) }</dd>
+				<dt>Forma de pago</dt><dd>{ textoPagoCliente(c.Datos.Pago) }</dd>
+				if c.Datos.Notas != "" {
+					<dt>Notas para el local</dt><dd>{ c.Datos.Notas }</dd>
+				}
+			</dl>
+			<p class="cli-info">
+				Al confirmar, el pedido le llega directo a Forest y te damos un link para seguir cómo va.
+				if c.Datos.Pago == "transferencia" {
+					Como pagás con transferencia, ahí también vas a ver el alias.
+				}
+			</p>
+			if c.Error != "" {
+				<p class="cli-error" role="alert">{ c.Error }</p>
+			}
+		</main>
+		<form method="post" action="/pedido" class="cli-barra-abajo">
+			<button type="submit" class="cli-boton cli-boton-pedido">
+				<span>CONFIRMAR PEDIDO</span>
+				<span>{ formatPrecio(c.Total) }</span>
+			</button>
+		</form>
+	}
+}
+
+templ lineasResumen(lineas []CliLinea, envio, total string) {
+	<div class="cli-resumen">
+		for _, l := range lineas {
+			<div class="cli-resumen-fila">
+				<div>
+					<strong>{ fmt.Sprint(l.Cantidad) }x { l.Titulo }</strong>
+					if len(l.Detalle) > 0 || l.Aclaraciones != "" {
+						<span>{ detalleLinea(l) }</span>
+					}
+				</div>
+				<strong>{ formatPrecio(l.Total) }</strong>
+			</div>
+		}
+		if envio != "" {
+			<div class="cli-resumen-fila cli-suave"><span>Envío</span><strong>{ formatPrecio(envio) }</strong></div>
+		}
+		<div class="cli-resumen-fila cli-resumen-total"><strong>Total</strong><strong>{ formatPrecio(total) }</strong></div>
+	</div>
+}
+
+// ---------- 6 · Seguimiento ----------
+
+templ SeguimientoPage(s VistaSeguimiento) {
+	@DocumentoCliente(fmt.Sprintf("Pedido #%d", s.ID)) {
+		<header class="cli-header">
+			@marcaCliente()
+		</header>
+		<main class="cli-seguimiento">
+			@EstadoSeguimiento(s)
+			if s.Transferencia && s.Estado != "cancelado" {
+				<section class="cli-caja">
+					<h2>PAGO POR TRANSFERENCIA</h2>
+					<div class="cli-alias">
+						<div>
+							<span>Transferí { formatPrecio(s.Total) } al alias</span>
+							<strong>{ s.Alias }</strong>
+							if s.Titular != "" {
+								<span class="cli-chico">Titular: { s.Titular }</span>
+							}
+						</div>
+						<button type="button" class="cli-boton cli-boton-secundario" data-copiar={ s.Alias }>COPIAR</button>
+					</div>
+					if s.Comprobante != "" {
+						<a href={ templ.SafeURL(s.Comprobante) } class="cli-boton cli-boton-whatsapp" target="_blank" rel="noopener">MANDAR COMPROBANTE</a>
+						<p class="cli-chico">Abre WhatsApp con “Comprobante del pedido #{ fmt.Sprint(s.ID) }” ya escrito. Solo adjuntás la captura.</p>
+					}
+				</section>
+			}
+			<section class="cli-caja cli-caja-punteada">
+				<strong>Guardá este link para ver cómo va tu pedido</strong>
+				<span class="cli-link">{ s.Link }</span>
+				<div class="cli-botones">
+					<button type="button" class="cli-boton cli-boton-secundario" data-copiar={ s.Link }>COPIAR LINK</button>
+					<a href={ templ.SafeURL(s.Compartir) } class="cli-boton cli-boton-secundario" target="_blank" rel="noopener">COMPARTIR</a>
+				</div>
+			</section>
+			<h2 class="cli-h2">TU PEDIDO</h2>
+			@lineasResumen(s.Lineas, s.Envio, s.Total)
+			<div class="cli-caja">
+				<span class="cli-chico">Entrega</span>
+				<strong>{ s.Entrega }</strong>
+			</div>
+			if s.Ayuda != "" {
+				<a href={ templ.SafeURL(s.Ayuda) } class="cli-ayuda" target="_blank" rel="noopener">¿Algún problema? Escribinos por WhatsApp</a>
+			}
+			<a href="/" class="cli-boton cli-boton-secundario">VOLVER AL INICIO</a>
+		</main>
+	}
+}
+
+// EstadoSeguimiento es la tarjeta del estado y los pasos. Mientras el pedido puede cambiar se pide
+// sola cada 15 segundos ("Esta página se actualiza sola"); rechazado o entregado ya no cambia.
+templ EstadoSeguimiento(s VistaSeguimiento) {
+	<div
+		id="seguimiento-estado"
+		if s.Activa {
+			hx-get={ fmt.Sprintf("/pedido/%s/estado", s.Token) }
+			hx-trigger="every 15s"
+			hx-swap="outerHTML"
+		}
+	>
+		<section class={ "cli-estado", "estado-" + s.Estado }>
+			<span class="cli-estado-numero">PEDIDO #{ fmt.Sprint(s.ID) }</span>
+			<h1>{ s.Titulo }</h1>
+			<p>{ s.Texto }</p>
+		</section>
+		if s.Activa {
+			<p class="cli-vivo">Esta página se actualiza sola</p>
+		}
+		if len(s.Pasos) > 0 {
+			<ol class="cli-pasos">
+				for _, p := range s.Pasos {
+					<li class={ templ.KV("hecho", p.Hecho) }>
+						<strong>{ p.Texto }</strong>
+						if p.Hora != "" {
+							<span>{ p.Hora }</span>
+						}
+					</li>
+				}
+			</ol>
+		}
+	</div>
+}
+
+templ PedidoNoEncontrado() {
+	@DocumentoCliente("Pedido") {
+		<main class="cli-inicio">
+			<section class="cli-cartel">
+				<h1>NO ENCONTRAMOS ESE PEDIDO</h1>
+				<p>Revisá que el link esté completo, tal como te lo pasamos.</p>
+			</section>
+			<a href="/" class="cli-boton">VOLVER AL INICIO</a>
+		</main>
+	}
+}
+
+// ---------- ayudas ----------
+
+func unidadesTexto(n int) string {
+	if n == 1 {
+		return "1 producto"
+	}
+	return fmt.Sprintf("%d productos", n)
+}
+
+// numeroPrecio es el precio sin el "$" para las columnas del menú ("14.500").
+func numeroPrecio(s string) string {
+	p := formatPrecio(s)
+	if len(p) > 0 && p[0] == '$' {
+		return p[1:]
+	}
+	return p
+}
+
+func detalleLinea(l CliLinea) string {
+	t := ""
+	for i, d := range l.Detalle {
+		if i > 0 {
+			t += " · "
+		}
+		t += d
+	}
+	if l.Aclaraciones != "" {
+		if t != "" {
+			t += " · "
+		}
+		t += "“" + l.Aclaraciones + "”"
+	}
+	return t
+}
+
+func textoEntregaCliente(d DatosVista) string {
+	if d.Entrega == "delivery" {
+		return "Delivery · " + d.Direccion
+	}
+	return "Retiro en el local"
+}
+
+func textoPagoCliente(p string) string {
+	if p == "transferencia" {
+		return "Transferencia"
+	}
+	return "Efectivo"
+}

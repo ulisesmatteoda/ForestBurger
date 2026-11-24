@@ -65,13 +65,11 @@ func main() {
 
 	views.VersionEstilos = versionDe("static/styles.css")
 	views.VersionPanelJS = versionDe("static/panel.js")
+	views.VersionCliente = versionDe("static/cliente.css")
 
 	// Router: acá se registran los handlers de la API, que reciben queries.
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", sinCache(http.StripPrefix("/static/", http.FileServer(http.Dir("static")))))
-
-	// Por ahora la raíz manda al panel. Más adelante acá va a ir el menú para los clientes.
-	mux.Handle("GET /{$}", http.RedirectHandler("/admin", http.StatusSeeOther))
 
 	// /login y /logout son públicos; todo /admin pasa por el middleware de sesión.
 	api.Rutas(mux)

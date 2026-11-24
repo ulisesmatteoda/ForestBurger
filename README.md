@@ -3,10 +3,10 @@
 Aplicación web para una hamburguesería artesanal. Gestiona dos entidades
 principales: los **productos** del menú (nombre, descripción, precio simple/doble y
 categoría) y los **pedidos** de los clientes (items seleccionados, cantidad,
-total, tipo de entrega, forma de pago y aclaraciones). Al finalizar un
-pedido, la aplicación genera automáticamente un mensaje de WhatsApp con el
-detalle y lo envía al local, para que la gestión de pedidos no dependa de ir
-y venir con cada cliente.
+total, tipo de entrega, forma de pago y aclaraciones). El cliente arma el
+pedido en la web y lo confirma: entra directo al panel del local (con un aviso
+y una alarma), y el cliente lo sigue en vivo con un link, sin ir y venir por
+chat.
 
 Este repositorio (rama `tp6`) corresponde a la entrega del **TP6**, que
 evoluciona el frontend SSR del TP5 (**Go + templ**) incorporando **HTMX**: los
@@ -292,6 +292,61 @@ se toca (`producto.disponible`), igual que el de Extras, y la fila queda atenuad
 - `pedidos.Crear` rechaza un pedido con un agotado ("Cheese Bacon está agotado"), por si llega
   igual desde un form viejo.
 - El menú público lo va a usar después.
+
+## La web del cliente
+
+Lo que ve el cliente, del Figma (página "Pantallas"): pensado para el celu y centrado en la
+compu. Todo es público (sin cuenta), **sin JavaScript propio**: htmx para lo que se recalcula y
+`panel.js` solo para COPIAR. Usa su propio documento y su propio CSS (`views/cliente.templ`,
+`static/cliente.css`).
+
+| Ruta | Pantalla |
+|---|---|
+| `GET /` | **Inicio:** "VER EL MENÚ". Si el local está cerrado, el cartel con los horarios |
+| `GET /menu` | **Menú:** promos de hoy, hamburguesas (el "+" abre su pantalla), veggies, acompañamientos y bebidas (− n + en la fila), y abajo "HACER PEDIDO · N productos · $total" |
+| `GET /menu/{id}` | **Burger:** tamaño, extras (− n +), aclaraciones y "AGREGAR $15.500". Se recalcula en vivo (`POST /menu/{id}/armar`) |
+| `GET /carrito` | **Tu pedido:** las líneas con − n +, el envío, el total y tus datos (entrega, dirección, pago, notas) |
+| `GET /carrito/revisar` | **Revisá tu pedido,** y CONFIRMAR (`POST /pedido`) |
+| `GET /pedido/{token}` | **Seguimiento:** el estado, los pasos con la hora, "Llega aprox. a las 21:50", el alias para transferir y MANDAR COMPROBANTE por WhatsApp, y el link para guardar |
+
+- **El carrito va en una cookie** (`fb_carrito`). Guarda solo lo que se eligió: producto,
+  tamaño, cantidad, extras y aclaración.
+  - Los precios los pone siempre el servidor con los de la base (`pedidos.CalcularPresupuesto`),
+    así que tocar la cookie no cambia lo que se cobra.
+  - Si algo se agotó o se borró, la línea se saca con un aviso.
+  - Los datos del cliente van en otra cookie (`fb_datos`), para no escribirlos de nuevo en el
+    próximo pedido.
+- **¿Toma pedidos?** Con el switch "Local abierto" **y** dentro del horario de Ajustes
+  (`pedidos.AbiertoAhora`).
+  - Cuenta los que cierran pasada la medianoche: de 20:00 a 01:00, a las 00:30 sigue abierto.
+  - Cerrado, el menú se ve pero no deja agregar, y el carrito no deja mandar.
+- **Al confirmar**, `pedidos.Crear` guarda el pedido **pendiente** con origen web. En el panel
+  saltan el aviso de pedido nuevo y la alarma, y desde ahí se confirma con la demora.
+- **El seguimiento se actualiza solo:** la tarjeta del estado y los pasos se piden cada 15
+  segundos (`GET /pedido/{token}/estado`). Cuando el pedido se entrega o se cancela, deja de
+  pedir.
+- **Validaciones al revisar:**
+  - local abierto y algo en el pedido;
+  - nombre y teléfono con código de área;
+  - la dirección si es delivery, y delivery solo si está activo;
+  - el pedido mínimo de Ajustes.
+- Las **aclaraciones** ("sin cebolla") se guardan por ítem (`item_pedido.aclaraciones`) y el
+  panel las muestra en la lista y en el detalle.
+- **Armá tu promo** (`GET /promo/{id}`, Figma 2b y 2c).
+  - Desde el menú, ARMAR PROMO abre la promo: el cliente suma las hamburguesas con − n + (puede
+    repetir) y ve el avance ("Te falta 1", "2 de 2").
+  - En "Tu promo" elige el tamaño de cada una (si la promo es a elección: mismo precio) y sus
+    extras.
+  - AGREGAR AL PEDIDO se habilita cuando están todas, con "Promo $29.000 + extras $1.000".
+  - Todo se recalcula sin JS (`POST /promo/{id}/armar`). Lo elegido viaja oculto en el form.
+- **Cómo se guarda una promo en el pedido:** como **una línea** de `item_pedido`, con
+  `promo_id`, el nombre y el precio de la promo, y en `detalle` lo elegido ("Classic (doble) +
+  Cheddar · Big Forest (simple)").
+  - Los extras van en `item_pedido_extra` ("Cheddar (Classic)"), así suman al total como
+    cualquier extra.
+  - `pedidos.Crear` valida que la promo esté activa y sea de hoy, la cantidad justa, que todas
+    entren en la promo y estén disponibles, y el tamaño (el de la promo, salvo "a elección").
+  - En el panel se ve "1x 2 Smash (promo): Classic (doble) + Cheddar · Big Forest (simple)".
 
 ## El panel en el celu
 
