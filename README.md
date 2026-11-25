@@ -644,6 +644,25 @@ Cada foto se sube con un nombre al azar y `Cache-Control: public, max-age=315360
 y en la base queda la URL completa. Al cambiar o borrar la foto de un producto o de una promo, se
 borra también del bucket.
 
+### Si anda lenta
+
+La app mide lo suyo, para separar lo que tarda el código de lo que tarda la red:
+
+- **Al arrancar**, el log dice "Latencia a la base: …". En la misma región tiene que ser de
+  menos de 1 ms. Si es mucho más, es la conexión con el Postgres (región, URL pública en vez de
+  la interna).
+- **Cada respuesta** lleva el header `Server-Timing: app;dur=…`, con lo que tardó la app en
+  milisegundos. Se ve en el navegador: DevTools → Red → elegir el pedido → Timing. Los que pasan
+  de 200 ms quedan en el log como "Lento: …".
+- **Cómo se compara con Railway:** si el "Total Duration" de los HTTP logs dice 400 ms y
+  `Server-Timing` dice 1 ms, el tiempo se va en la red de Railway (su proxy de borde hasta el
+  servicio), no en el código.
+
+Para no sumar viajes de más, el panel carga "Local abierto" y el aviso solo en las páginas
+completas (los clics de htmx hacen una sola consulta). El CSS y el JS con `?v=` se guardan en
+el navegador para siempre (`immutable`), y el pool de conexiones a la base las mantiene
+abiertas.
+
 ### Probar la imagen en la compu
 
 ```bash

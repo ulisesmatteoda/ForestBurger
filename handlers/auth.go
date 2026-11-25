@@ -57,13 +57,20 @@ func (a *API) RequiereAdmin(next http.Handler) http.Handler {
 			return
 		}
 		ctx := auth.ConAdmin(r.Context(), email)
-		// El switch "Local abierto" está en la barra lateral de todas las pantallas del panel.
-		if aj, err := a.q.GetAjustes(ctx); err == nil {
-			ctx = views.ConLocalAbierto(ctx, aj.LocalAbierto)
+		// El switch "Local abierto" y el aviso de pedido nuevo van en el layout: solo hacen falta
+		// en una página completa. Los pedidos de htmx que devuelven un pedazo (un filtro, un
+		// switch, un modal) no dibujan el layout, y así se ahorran dos consultas. El aviso, además,
+		// lo necesita su propia consulta cada 10 segundos.
+		paginaCompleta := !esHTMX(r)
+		if paginaCompleta {
+			if aj, err := a.q.GetAjustes(ctx); err == nil {
+				ctx = views.ConLocalAbierto(ctx, aj.LocalAbierto)
+			}
 		}
-		// El aviso de pedido nuevo también está en todas las pantallas del panel.
-		if aviso, err := a.avisoPedido(ctx); err == nil {
-			ctx = views.ConAviso(ctx, aviso)
+		if paginaCompleta || r.URL.Path == views.RutaAvisoPedido {
+			if aviso, err := a.avisoPedido(ctx); err == nil {
+				ctx = views.ConAviso(ctx, aviso)
+			}
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

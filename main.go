@@ -6,9 +6,11 @@ import (
 	"database/sql"
 	_ "embed"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"forestburger/auth"
 	sqlc "forestburger/db/sqlc"
@@ -48,6 +50,13 @@ func main() {
 		log.Fatalf("No se pudo conectar a la base de datos: %v", err)
 	}
 	log.Println("Conectado a la base de datos")
+
+	// El pool: que las conexiones queden abiertas y se reusen. Con los valores por defecto (2
+	// ociosas) cada pico de pedidos abría conexiones nuevas, y cada una cuesta TCP + login.
+	conn.SetMaxOpenConns(20)
+	conn.SetMaxIdleConns(10)
+	conn.SetConnMaxIdleTime(5 * time.Minute)
+	log.Printf("Latencia a la base: %s (promedio de 5)", latenciaBase(conn))
 
 	// El schema va antes que todo lo que usa las tablas (el admin de desarrollo, el seed).
 	if _, err := conn.Exec(schema); err != nil {
@@ -92,15 +101,12 @@ func main() {
 
 	// Router: acá se registran los handlers de la API, que reciben queries.
 	mux := http.NewServeMux()
-	mux.Handle("GET /static/", sinCache(http.StripPrefix("/static/", http.FileServer(http.Dir("static")))))
+	mux.Handle("GET /static/", cacheEstaticos(http.StripPrefix("/static/", http.FileServer(http.Dir("static")))))
 
 	// /login y /logout son públicos; todo /admin pasa por el middleware de sesión.
 	api.Rutas(mux)
 
-	var handler http.Handler = mux
-	if staging {
-		handler = noIndexar(mux)
-	}
+	handler := armarHandler(mux, staging)
 
 	// Railway (y otros) dicen en qué puerto escuchar con PORT; en local, 8080 como siempre.
 	puerto := os.Getenv("PORT")
@@ -109,6 +115,16 @@ func main() {
 	}
 	log.Printf("Servidor escuchando en %s", urlPublica(puerto))
 	log.Fatal(http.ListenAndServe(":"+puerto, handler))
+}
+
+// armarHandler pone los middlewares que van en todas las respuestas: la medición (Server-Timing y
+// el log de los lentos) y, en staging, el noindex.
+func armarHandler(mux http.Handler, staging bool) http.Handler {
+	h := medirPedidos(mux)
+	if staging {
+		h = noIndexar(h)
+	}
+	return h
 }
 
 // urlPublica es la dirección por la que se entra: la que da Railway si está, o localhost.
@@ -128,14 +144,74 @@ func noIndexar(next http.Handler) http.Handler {
 	})
 }
 
-// sinCache hace que el navegador pregunte cada vez si un archivo de static/ cambió (si no cambió
-// recibe un 304 sin descargarlo). Sin esto puede seguir usando un styles.css viejo después de
-// editarlo, y parece que el cambio no anduvo.
-func sinCache(next http.Handler) http.Handler {
+// cacheEstaticos: lo que se pide con ?v=<hash> (styles.css, cliente.css, panel.js) se guarda en
+// el navegador para siempre, porque si el archivo cambia, cambia el hash y la URL. Lo demás (logo,
+// íconos) se revalida cada vez (no-cache: si no cambió, un 304 sin descargarlo), así un cambio se
+// ve enseguida.
+func cacheEstaticos(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
+		if r.URL.Query().Get("v") != "" {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// umbralLento: los pedidos que tardan más que esto en la app se anotan en el log.
+const umbralLento = 200 * time.Millisecond
+
+// medirPedidos anota cuánto tarda la app en cada pedido: en el header Server-Timing (se ve en el
+// navegador, DevTools → Red → Timing) y en el log si pasa de umbralLento. Sirve para separar lo que
+// tarda el código de lo que tarda la red (el "Total Duration" de Railway incluye su proxy).
+func medirPedidos(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		m := &respuestaMedida{ResponseWriter: w, inicio: time.Now(), status: http.StatusOK}
+		next.ServeHTTP(m, r)
+		if d := time.Since(m.inicio); d > umbralLento {
+			log.Printf("Lento: %s %s → %d en %s", r.Method, r.URL.Path, m.status, d.Round(time.Millisecond))
+		}
+	})
+}
+
+// respuestaMedida pone Server-Timing justo antes de mandar los headers (después ya no se puede):
+// es lo que tardó el handler hasta empezar a responder.
+type respuestaMedida struct {
+	http.ResponseWriter
+	inicio   time.Time
+	status   int
+	escribio bool
+}
+
+func (m *respuestaMedida) WriteHeader(status int) {
+	if !m.escribio {
+		m.escribio, m.status = true, status
+		ms := float64(time.Since(m.inicio).Microseconds()) / 1000
+		m.Header().Set("Server-Timing", fmt.Sprintf("app;dur=%.1f", ms))
+	}
+	m.ResponseWriter.WriteHeader(status)
+}
+
+func (m *respuestaMedida) Write(b []byte) (int, error) {
+	if !m.escribio {
+		m.WriteHeader(http.StatusOK)
+	}
+	return m.ResponseWriter.Write(b)
+}
+
+// latenciaBase mide cuánto tarda un viaje a la base (el promedio de 5 pings). En la misma región
+// tiene que ser de pocos milisegundos; mucho más es un problema de red, no de código.
+func latenciaBase(conn *sql.DB) time.Duration {
+	var total time.Duration
+	for range 5 {
+		inicio := time.Now()
+		if err := conn.Ping(); err != nil {
+			return 0
+		}
+		total += time.Since(inicio)
+	}
+	return (total / 5).Round(10 * time.Microsecond)
 }
 
 // versionDe devuelve un pedazo del hash del archivo: cambia solo cuando cambia su contenido. Si no

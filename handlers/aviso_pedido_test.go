@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"forestburger/pedidos"
+	"forestburger/views"
 )
 
 func TestAviso_SinPendientesQuedaVacioYSigueConsultando(t *testing.T) {
@@ -102,5 +103,32 @@ func TestAviso_PideSesion(t *testing.T) {
 	mux, _ := setupSinSesion(t)
 	if rec := pedirPanel(mux, "/admin/pedidos/aviso?actual=", true); rec.Header().Get("HX-Redirect") != "/login" {
 		t.Error("el aviso sin sesión tendría que mandar al login")
+	}
+}
+
+// El middleware carga el aviso (y "Local abierto") solo cuando se usa: en una página completa y
+// en la consulta del aviso. Un pedido de htmx que devuelve un pedazo se ahorra esas consultas.
+func TestRequiereAdmin_CargaElAvisoSoloCuandoHaceFalta(t *testing.T) {
+	_, q, api := setupAPI(t)
+	guardarAdminTest(t, q)
+	var cargado bool
+	sonda := conSesion(api.RequiereAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, cargado = views.AvisoDe(r.Context())
+	})), adminTest)
+	casos := []struct {
+		ruta   string
+		htmx   bool
+		quiero bool
+	}{
+		{"/admin/pedidos", false, true},          // página completa: el layout lo muestra
+		{"/admin?categoria=bebida", true, false}, // un filtro con htmx: no
+		{"/admin/pedidos/aviso", true, true},     // la consulta del aviso: sí
+	}
+	for _, c := range casos {
+		cargado = false
+		pedirPanel(sonda, c.ruta, c.htmx)
+		if cargado != c.quiero {
+			t.Errorf("%s (htmx %v): aviso cargado = %v, quiero %v", c.ruta, c.htmx, cargado, c.quiero)
+		}
 	}
 }
