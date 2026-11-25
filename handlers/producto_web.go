@@ -478,5 +478,6 @@ func (a *API) listarProductos(ctx context.Context, categoria string) ([]sqlc.Pro
 // reconstruye una página del historial (botón "atrás" sin la página en caché): ahí necesita el
 // HTML completo, aunque también mande HX-Request.
 func esHTMX(r *http.Request) bool {
-	return r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true"
+	return r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" &&
+		r.Header.Get("HX-Boosted") != "true"
 }

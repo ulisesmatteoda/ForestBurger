@@ -36,7 +36,8 @@ El diseño está en Figma: archivo `sU9jcobXIMVEt95QMQfrGI`, páginas Admin `15:
   - la sesión vencida responde `HX-Redirect`;
   - el filtro de la página se recupera con `HX-Current-URL`;
   - las actualizaciones fuera del target van con `hx-swap-oob`;
-  - sin htmx, cada ruta devuelve la página completa (con el modal abierto si corresponde).
+  - sin htmx, cada ruta devuelve la página completa (con el modal abierto si corresponde);
+  - **la navegación usa `hx-boost`** (sidebar, tabbar, VER del aviso, links de la web del cliente). Un pedido boosteado (`HX-Boosted`) es una página completa: `esHTMX` devuelve false. Los forms que mandan algo y redirigen llevan `hx-boost="false"`. `panel.js` va en el `<head>`, porque el body se reemplaza.
 - **Tests:**
   - de handlers, con `setupAPI`/`setup`/`conSesion` en `handlers/`;
   - de base, con `internal/basetest.Abrir(t)`, que trunca las tablas.

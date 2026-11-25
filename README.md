@@ -644,6 +644,21 @@ Cada foto se sube con un nombre al azar y `Cache-Control: public, max-age=315360
 y en la base queda la URL completa. Al cambiar o borrar la foto de un producto o de una promo, se
 borra también del bucket.
 
+### Navegación con hx-boost
+
+Cambiar de sección no recarga la página: el sidebar, las pestañas del celu, el VER del aviso y
+los links de la web del cliente llevan **`hx-boost`**. htmx pide la página nueva y reemplaza el
+`<body>`, y el título y la URL se actualizan. Se siente más fluido, y el permiso de audio de la
+alarma no se pierde al navegar.
+
+- **Un pedido boosteado (`HX-Boosted`)** se responde como página completa: `esHTMX` devuelve
+  false.
+- **Los forms que mandan algo y redirigen** (agregar al carrito, revisar, confirmar, salir) son
+  POST comunes, con `hx-boost="false"`. Así la URL queda la del redirect.
+- **"Atrás"** recarga la página de verdad (`historyCacheSize: 0`), así no se ve una lista vieja.
+- **`panel.js` va en el `<head>`:** si estuviera en el body, se volvería a cargar en cada
+  navegación.
+
 ### Si anda lenta
 
 La app mide lo suyo, para separar lo que tarda el código de lo que tarda la red:

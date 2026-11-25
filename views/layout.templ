@@ -46,7 +46,13 @@ templ Documento(titulo string) {
 			<meta name="apple-mobile-web-app-capable" content="yes"/>
 			<meta name="apple-mobile-web-app-title" content="ForestBurger"/>
 			<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+			// htmx-config: al volver atrás se recarga la página (datos frescos) en vez de mostrar una
+			// copia guardada del body, que podría tener una lista de pedidos vieja.
+			<meta name="htmx-config" content='{"historyCacheSize":0,"refreshOnHistoryMiss":true}'/>
 			<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+			// Lo que htmx no puede hacer (copiar al portapapeles). En el <head> y no en el body: con
+			// hx-boost el body se reemplaza al navegar, y el script se volvería a cargar cada vez.
+			<script src={ "/static/panel.js?v=" + VersionPanelJS } defer></script>
 			<link rel="preconnect" href="https://fonts.googleapis.com"/>
 			<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Semi+Condensed:wght@700;800&display=swap" rel="stylesheet"/>
 			<link rel="stylesheet" href={ "/static/styles.css?v=" + VersionEstilos }/>
@@ -103,7 +109,7 @@ templ Layout(titulo, seccion string) {
 			// En el celu (CSS, menos de 800 px) la barra lateral se oculta y quedan esta barra de
 			// arriba y la de pestañas de abajo. Es el mismo HTML para la compu y el celu.
 			<header class="topbar">
-				<a href="/admin/pedidos" class="topbar-marca">
+				<a href="/admin/pedidos" class="topbar-marca" hx-boost="true">
 					<img src="/static/img/pinos.svg" alt="" width="30" height="33"/>
 					<span>FORESTBURGER</span>
 				</a>
@@ -116,7 +122,9 @@ templ Layout(titulo, seccion string) {
 					@Logo()
 				</div>
 				<span class="sidebar-etiqueta">PANEL DEL LOCAL</span>
-				<nav class="sidebar-nav" aria-label="Secciones del panel">
+				// hx-boost: cambiar de sección no recarga la página, htmx pide la nueva y cambia el body.
+				// Se siente más fluido y no se pierde el permiso de audio de la alarma.
+				<nav class="sidebar-nav" aria-label="Secciones del panel" hx-boost="true">
 					for _, s := range seccionesPanel {
 						if !s.Lista {
 							<span class="nav-item apagado" aria-disabled="true">
@@ -150,7 +158,7 @@ templ Layout(titulo, seccion string) {
 				}
 				{ children... }
 			</main>
-			<nav class="tabbar" aria-label="Secciones del panel">
+			<nav class="tabbar" aria-label="Secciones del panel" hx-boost="true">
 				for _, s := range pestanasCelu {
 					<a
 						href={ templ.URL(s.Ruta) }
@@ -165,8 +173,6 @@ templ Layout(titulo, seccion string) {
 				}
 			</nav>
 		</div>
-		// Lo que htmx no puede hacer (copiar al portapapeles). Solo en el panel.
-		<script src={ "/static/panel.js?v=" + VersionPanelJS } defer></script>
 	}
 }
 

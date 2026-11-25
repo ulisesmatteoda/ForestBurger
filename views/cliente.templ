@@ -167,17 +167,21 @@ templ DocumentoCliente(titulo string) {
 			@metaNoIndex()
 			<meta name="theme-color" content="#023320"/>
 			<link rel="icon" type="image/png" href="/static/icons/icon-192.png"/>
+			<meta name="htmx-config" content='{"historyCacheSize":0,"refreshOnHistoryMiss":true}'/>
 			<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+			<script src={ "/static/panel.js?v=" + VersionPanelJS } defer></script>
 			<link rel="preconnect" href="https://fonts.googleapis.com"/>
 			<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Semi+Condensed:wght@700;800&display=swap" rel="stylesheet"/>
 			<link rel="stylesheet" href={ "/static/cliente.css?v=" + VersionCliente }/>
 		</head>
 		<body class="cliente">
 			@FranjaPrueba()
-			<div class="cli">
+			// hx-boost: los links (menú, burger, carrito, volver) no recargan la página. Los forms que
+			// mandan algo (agregar, revisar, confirmar) llevan hx-boost="false": son POST comunes que
+			// redirigen, y la URL tiene que quedar la del redirect.
+			<div class="cli" hx-boost="true">
 				{ children... }
 			</div>
-			<script src={ "/static/panel.js?v=" + VersionPanelJS } defer></script>
 		</body>
 	</html>
 }
@@ -233,7 +237,8 @@ templ BarraPedidoAbajo(b BarraPedido, oob bool) {
 }
 
 templ volver(href string) {
-	<a href={ templ.URL(href) } class="cli-volver" aria-label="Volver">
+	// hx-boost explícito: a veces está dentro de un form que no se boostea.
+	<a href={ templ.URL(href) } class="cli-volver" aria-label="Volver" hx-boost="true">
 		@IconoFlecha()
 	</a>
 }
@@ -418,7 +423,7 @@ func burgerArma(id int32) templ.Attributes {
 }
 
 templ FormBurger(b VistaBurger) {
-	<form id="form-burger" class="cli-burger" method="post" action="/carrito">
+	<form id="form-burger" class="cli-burger" method="post" action="/carrito" hx-boost="false">
 		// Enter en las aclaraciones no agrega: el botón "por defecto" está apagado.
 		<button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>
 		<input type="hidden" name="producto" value={ fmt.Sprint(b.ID) }/>
@@ -511,7 +516,7 @@ func promoArma(id int32, vals string) templ.Attributes {
 }
 
 templ FormPromoArmar(v VistaPromoArmar) {
-	<form id="form-promo-armar" class="cli-burger" method="post" action="/carrito/promo">
+	<form id="form-promo-armar" class="cli-burger" method="post" action="/carrito/promo" hx-boost="false">
 		<input type="hidden" name="promo" value={ fmt.Sprint(v.ID) }/>
 		for i, s := range v.Slots {
 			<input type="hidden" name={ fmt.Sprintf("slot_%d_producto", i) } value={ fmt.Sprint(s.Producto) }/>
@@ -639,7 +644,7 @@ func carritoArma(ruta string) templ.Attributes {
 }
 
 templ FormCarrito(c VistaCarrito) {
-	<form id="form-carrito" class="cli-carrito" method="post" action="/carrito/revisar">
+	<form id="form-carrito" class="cli-carrito" method="post" action="/carrito/revisar" hx-boost="false">
 		<button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>
 		for _, a := range c.Avisos {
 			<p class="cli-aviso">{ a }</p>
@@ -767,7 +772,7 @@ templ RevisarPage(c VistaCarrito) {
 				<p class="cli-error" role="alert">{ c.Error }</p>
 			}
 		</main>
-		<form method="post" action="/pedido" class="cli-barra-abajo">
+		<form method="post" action="/pedido" class="cli-barra-abajo" hx-boost="false">
 			<button type="submit" class="cli-boton cli-boton-pedido">
 				<span>CONFIRMAR PEDIDO</span>
 				<span>{ formatPrecio(c.Total) }</span>

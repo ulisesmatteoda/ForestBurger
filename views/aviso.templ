@@ -83,7 +83,8 @@ templ Aviso(a AvisoPedido, titulo string, respuesta, oob bool) {
 					</strong>
 					<span>Suena una alarma hasta que alguien lo abre.</span>
 				</div>
-				<a class="boton aviso-ver" href={ templ.URL(fmt.Sprintf("/admin/pedidos/%d", a.ID)) }>VER</a>
+				<a class="boton aviso-ver" href={ templ.URL(fmt.Sprintf("/admin/pedidos/%d", a.ID)) } hx-boost="true" hx-swap="innerHTML">VER</a>
+				// VER navega con boost; hx-swap explícito porque si no hereda el outerHTML de #aviso-pedido.
 				// Suena mientras el aviso está y se corta cuando se va. El navegador lo deja sonar
 				// solo si ya tocaron algo en la página (ver el README).
 				<audio src="/static/alarma.wav" autoplay loop></audio>
