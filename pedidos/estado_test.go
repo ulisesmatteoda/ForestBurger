@@ -61,7 +61,7 @@ func TestCambiarEstado_DeliveryCompleto(t *testing.T) {
 	}
 }
 
-func TestCambiarEstado_RetiroSeEntregaDirecto(t *testing.T) {
+func TestCambiarEstado_RetiroPasaPorListo(t *testing.T) {
 	db := basetest.Abrir(t)
 	c := cargarCatalogo(t, db)
 	p := nuevoPendiente(t, db, c, EntregaRetiro)
@@ -71,8 +71,20 @@ func TestCambiarEstado_RetiroSeEntregaDirecto(t *testing.T) {
 	if _, err := CambiarEstado(ctx, db, p.ID, AccionEnCamino, 0); !errors.Is(err, ErrAccionInvalida) {
 		t.Errorf("un retiro no sale en camino: quiero ErrAccionInvalida, vino %v", err)
 	}
+	if _, err := CambiarEstado(ctx, db, p.ID, AccionEntregado, 0); !errors.Is(err, ErrEstadoCambio) {
+		t.Errorf("un retiro confirmado primero queda listo: quiero ErrEstadoCambio, vino %v", err)
+	}
+	if got, err := CambiarEstado(ctx, db, p.ID, AccionListo, 0); err != nil || got.Estado != EstadoListo {
+		t.Fatalf("listo para retirar: %+v, %v", got, err)
+	}
 	if got, err := CambiarEstado(ctx, db, p.ID, AccionEntregado, 0); err != nil || got.Estado != EstadoEntregado {
-		t.Errorf("entregar un retiro confirmado: %+v, %v", got, err)
+		t.Errorf("entregar un retiro listo: %+v, %v", got, err)
+	}
+	// Un delivery no pasa por "listo".
+	d := nuevoPendiente(t, db, c, EntregaDelivery)
+	CambiarEstado(ctx, db, d.ID, AccionConfirmar, 30)
+	if _, err := CambiarEstado(ctx, db, d.ID, AccionListo, 0); !errors.Is(err, ErrAccionInvalida) {
+		t.Errorf("un delivery no queda listo para retirar: %v", err)
 	}
 }
 
@@ -143,7 +155,8 @@ func TestAccionesPara(t *testing.T) {
 	casos := map[string][]string{
 		EstadoPendiente + "/" + EntregaDelivery:  {AccionRechazar, AccionConfirmar},
 		EstadoConfirmado + "/" + EntregaDelivery: {AccionCancelar, AccionEnCamino},
-		EstadoConfirmado + "/" + EntregaRetiro:   {AccionCancelar, AccionEntregado},
+		EstadoConfirmado + "/" + EntregaRetiro:   {AccionCancelar, AccionListo},
+		EstadoListo + "/" + EntregaRetiro:        {AccionCancelar, AccionEntregado},
 		EstadoEnCamino + "/" + EntregaDelivery:   {AccionCancelar, AccionEntregado},
 		EstadoEntregado + "/" + EntregaDelivery:  nil,
 		EstadoCancelado + "/" + EntregaRetiro:    nil,

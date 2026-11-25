@@ -28,7 +28,7 @@ var seccionesMenu = []struct {
 	categoria, ancla, chip, titulo, nota string
 	rapida                               bool
 }{
-	{"hamburguesa", "smash", "Smash", "SMASH", "", false},
+	{"hamburguesa", "smash", "Smash", "SMASH", "Todas las hamburguesas incluyen papas.", false},
 	{"veggie", "veggie", "Veggie", "VEGGIE", "", false},
 	{"acompañamiento", "acompanamientos", "Acomp.", "ACOMPAÑAMIENTOS", "", true},
 	{"bebida", "bebidas", "Bebidas", "BEBIDAS", "", true},
@@ -637,7 +637,7 @@ func (a *API) vistaSeguimiento(r *http.Request) (views.VistaSeguimiento, error) 
 	s := views.VistaSeguimiento{
 		ID: p.ID, Token: p.Token, Estado: p.Estado, Total: p.Total,
 		Transferencia: p.Pago == pedidos.PagoTransferencia, Alias: aj.AliasCbu, Titular: aj.Titular,
-		Activa: p.Estado == pedidos.EstadoPendiente || p.Estado == pedidos.EstadoConfirmado || p.Estado == pedidos.EstadoEnCamino,
+		Activa: p.Estado == pedidos.EstadoPendiente || p.Estado == pedidos.EstadoConfirmado || p.Estado == pedidos.EstadoEnCamino || p.Estado == pedidos.EstadoListo,
 	}
 	s.Link = linkSeguimiento(r, p.Token)
 	s.Compartir = "https://wa.me/?text=" + url.QueryEscape("Seguí mi pedido de Forest Burger acá: "+s.Link)
@@ -694,7 +694,7 @@ func (a *API) vistaSeguimiento(r *http.Request) (views.VistaSeguimiento, error) 
 	if c, ok := horaDe[pedidos.EstadoConfirmado]; ok && p.DemoraMin.Valid {
 		llega = c.Add(time.Duration(p.DemoraMin.Int16) * time.Minute).Format("15:04")
 	}
-	s.Titulo, s.Texto = textosSeguimiento(p, llega, rechazado)
+	s.Titulo, s.Texto = textosSeguimiento(p, llega, rechazado, aj.DireccionRetiro)
 	if p.Estado != pedidos.EstadoCancelado {
 		pasos := []struct{ evento, texto string }{
 			{pedidos.EventoRecibido, "Recibimos tu pedido"},
@@ -702,8 +702,11 @@ func (a *API) vistaSeguimiento(r *http.Request) (views.VistaSeguimiento, error) 
 		}
 		if p.Entrega == pedidos.EntregaDelivery {
 			pasos = append(pasos, struct{ evento, texto string }{pedidos.EstadoEnCamino, "En camino"})
+			pasos = append(pasos, struct{ evento, texto string }{pedidos.EstadoEntregado, "Entregado"})
+		} else {
+			pasos = append(pasos, struct{ evento, texto string }{pedidos.EstadoListo, "Listo para retirar"})
+			pasos = append(pasos, struct{ evento, texto string }{pedidos.EstadoEntregado, "Retirado"})
 		}
-		pasos = append(pasos, struct{ evento, texto string }{pedidos.EstadoEntregado, "Entregado"})
 		for _, paso := range pasos {
 			ps := views.PasoSeguimiento{Texto: paso.texto}
 			if t, ok := horaDe[paso.evento]; ok {
@@ -716,7 +719,7 @@ func (a *API) vistaSeguimiento(r *http.Request) (views.VistaSeguimiento, error) 
 }
 
 // textosSeguimiento es la tarjeta del estado, con los textos del Figma.
-func textosSeguimiento(p sqlc.Pedido, llega string, rechazado bool) (titulo, texto string) {
+func textosSeguimiento(p sqlc.Pedido, llega string, rechazado bool, direccionRetiro string) (titulo, texto string) {
 	switch p.Estado {
 	case pedidos.EstadoPendiente:
 		return "Recibimos tu pedido", "Esperando que Forest lo confirme. Suele tardar unos minutos."
@@ -734,7 +737,16 @@ func textosSeguimiento(p sqlc.Pedido, llega string, rechazado bool) (titulo, tex
 			texto = "Llega aprox. a las " + llega + " a " + p.Direccion + "."
 		}
 		return "Tu pedido está en camino", texto
+	case pedidos.EstadoListo:
+		texto = "Ya podés pasar a retirarlo."
+		if direccionRetiro != "" {
+			texto = "Ya podés pasar a retirarlo por " + direccionRetiro + "."
+		}
+		return "¡Tu pedido está listo!", texto
 	case pedidos.EstadoEntregado:
+		if p.Entrega == pedidos.EntregaRetiro {
+			return "¡Retirado! Que lo disfrutes", "Gracias por pedir en Forest."
+		}
 		return "¡Entregado! Que lo disfrutes", "Gracias por pedir en Forest."
 	}
 	if rechazado {

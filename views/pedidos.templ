@@ -397,6 +397,9 @@ templ pieDetalle(d DetallePedido) {
 				if tieneAccion(d.Acciones, pedidos.AccionEnCamino) {
 					@botonAccion(d.ID, pedidos.AccionEnCamino, "MARCAR EN CAMINO")
 				}
+				if tieneAccion(d.Acciones, pedidos.AccionListo) {
+					@botonAccion(d.ID, pedidos.AccionListo, "LISTO PARA RETIRAR")
+				}
 				if tieneAccion(d.Acciones, pedidos.AccionEntregado) {
 					@botonAccion(d.ID, pedidos.AccionEntregado, "MARCAR ENTREGADO")
 				}
@@ -484,6 +487,8 @@ func nombreEstado(estado string) string {
 		return "Confirmado"
 	case pedidos.EstadoEnCamino:
 		return "En camino"
+	case pedidos.EstadoListo:
+		return "Listo"
 	case pedidos.EstadoEntregado:
 		return "Entregado"
 	case pedidos.EstadoCancelado:

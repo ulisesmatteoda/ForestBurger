@@ -14,6 +14,7 @@
   --fb-estado-pendiente: #F2C94C;
   --fb-estado-confirmado: #9CC8F5;
   --fb-estado-en-camino: #C9B6F2;
+  --fb-estado-listo: #9EE6B8;
   --fb-whatsapp: #25D366;
 }
 
@@ -441,6 +442,7 @@ button.chip { font-family: inherit; }
 .estado-pendiente { background: var(--fb-estado-pendiente); }
 .estado-confirmado { background: var(--fb-estado-confirmado); }
 .estado-en_camino { background: var(--fb-estado-en-camino); }
+.estado-listo { background: var(--fb-estado-listo); }
 .estado-entregado { background: var(--fb-crema); }
 .estado-cancelado { background: transparent; border: 1px solid var(--fb-peligro); color: var(--fb-peligro); }
 

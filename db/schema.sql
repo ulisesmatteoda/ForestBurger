@@ -107,10 +107,11 @@ CREATE TABLE IF NOT EXISTS pedido (
 );
 CREATE INDEX IF NOT EXISTS pedido_creado_en ON pedido (creado_en);
 -- Los estados van en un CHECK con nombre, aparte, para poder cambiarlos en una base que ya existe
--- (CREATE TABLE IF NOT EXISTS no toca una tabla que ya está). en_camino: un delivery que ya salió.
+-- (CREATE TABLE IF NOT EXISTS no toca una tabla que ya está). en_camino: un delivery que ya salió;
+-- listo: un retiro que ya se puede pasar a buscar.
 ALTER TABLE pedido DROP CONSTRAINT IF EXISTS pedido_estado_check;
 ALTER TABLE pedido ADD CONSTRAINT pedido_estado_check
-    CHECK (estado IN ('pendiente', 'confirmado', 'en_camino', 'entregado', 'cancelado'));
+    CHECK (estado IN ('pendiente', 'confirmado', 'en_camino', 'listo', 'entregado', 'cancelado'));
 
 -- Lo que se pidió. Los extras van por cada unidad: "2x Classic + cheddar" son dos Classic, cada
 -- una con cheddar. Una línea cuesta cantidad × (precio_unitario + extras).

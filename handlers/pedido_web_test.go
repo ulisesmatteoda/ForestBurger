@@ -186,9 +186,9 @@ func TestAccionPedido(t *testing.T) {
 	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin/pedidos/"+idTexto(otro.ID) {
 		t.Errorf("sin htmx: status = %d, Location = %q", rec.Code, rec.Header().Get("Location"))
 	}
-	// Un retiro confirmado se entrega directo (no sale en camino).
-	if body := pedirPanel(mux, "/admin/pedidos/"+idTexto(otro.ID), true).Body.String(); !strings.Contains(body, "MARCAR ENTREGADO") || strings.Contains(body, "MARCAR EN CAMINO") {
-		t.Errorf("un retiro confirmado tendría que ofrecer MARCAR ENTREGADO: %s", body)
+	// Un retiro confirmado queda "listo para retirar" (no sale en camino).
+	if body := pedirPanel(mux, "/admin/pedidos/"+idTexto(otro.ID), true).Body.String(); !strings.Contains(body, "LISTO PARA RETIRAR") || strings.Contains(body, "MARCAR EN CAMINO") {
+		t.Errorf("un retiro confirmado tendría que ofrecer LISTO PARA RETIRAR: %s", body)
 	}
 	if rec := pedirExtra(mux, http.MethodPost, "/admin/pedidos/"+idTexto(otro.ID)+"/en-camino", nil, true); rec.Code != http.StatusBadRequest {
 		t.Errorf("en camino para un retiro: status = %d, quiero 400", rec.Code)

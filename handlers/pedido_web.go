@@ -634,6 +634,8 @@ func textoEvento(estado, detalle string) string {
 		return "Confirmado"
 	case pedidos.EstadoEnCamino:
 		return "En camino"
+	case pedidos.EstadoListo:
+		return "Listo para retirar"
 	case pedidos.EstadoEntregado:
 		return "Entregado"
 	case pedidos.EstadoCancelado:

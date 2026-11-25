@@ -480,8 +480,9 @@ pedido solo manda qué productos y extras, y cuántos.
   | Estado | Acciones |
   |---|---|
   | pendiente | elegir la demora (30, 45 o 60 min, la ve el cliente) y CONFIRMAR, o RECHAZAR |
-  | confirmado | delivery: MARCAR EN CAMINO; retiro: MARCAR ENTREGADO; CANCELAR PEDIDO |
-  | en camino | MARCAR ENTREGADO; CANCELAR PEDIDO |
+  | confirmado | delivery: MARCAR EN CAMINO; retiro: LISTO PARA RETIRAR; CANCELAR PEDIDO |
+  | en camino (delivery) | MARCAR ENTREGADO; CANCELAR PEDIDO |
+  | listo (retiro) | MARCAR ENTREGADO; CANCELAR PEDIDO. El cliente ve "¡Tu pedido está listo!" con la dirección del local |
 
   Rechazar y cancelar piden confirmación. Si dos personas tocan el mismo pedido a la vez, la
   segunda ve "Este pedido ya cambió de estado" con el estado real (el cambio va condicionado al

@@ -42,25 +42,25 @@ SELECT * FROM pedido_evento WHERE pedido_id = $1 ORDER BY creado_en, id;
 -- Para avisar al borrar: en cuántos pedidos pendientes o confirmados aparece el producto.
 SELECT count(DISTINCT p.id) FROM pedido p
 JOIN item_pedido ip ON ip.pedido_id = p.id
-WHERE ip.producto_id = $1 AND p.estado IN ('pendiente', 'confirmado');
+WHERE ip.producto_id = $1 AND p.estado IN ('pendiente', 'confirmado', 'en_camino', 'listo');
 
 -- name: CountPedidosEnCursoConExtra :one
 SELECT count(DISTINCT p.id) FROM pedido p
 JOIN item_pedido ip ON ip.pedido_id = p.id
 JOIN item_pedido_extra ipe ON ipe.item_pedido_id = ip.id
-WHERE ipe.extra_id = $1 AND p.estado IN ('pendiente', 'confirmado');
+WHERE ipe.extra_id = $1 AND p.estado IN ('pendiente', 'confirmado', 'en_camino', 'listo');
 
 -- name: CountProductos :one
 SELECT count(*) FROM producto;
 
 -- name: ListPedidos :many
 -- Los pedidos de un rango de fechas [desde, hasta), del más nuevo al más viejo. estado vacío trae
--- todos; "confirmado" incluye los en camino (siguen en curso).
+-- todos; "confirmado" incluye los en camino y los listos para retirar (siguen en curso).
 SELECT * FROM pedido
 WHERE creado_en >= sqlc.arg(desde) AND creado_en < sqlc.arg(hasta)
   AND (sqlc.arg(estado)::text = ''
        OR estado = sqlc.arg(estado)::text
-       OR (sqlc.arg(estado)::text = 'confirmado' AND estado = 'en_camino'))
+       OR (sqlc.arg(estado)::text = 'confirmado' AND estado IN ('en_camino', 'listo')))
 ORDER BY creado_en DESC;
 
 -- name: ListResumenItems :many

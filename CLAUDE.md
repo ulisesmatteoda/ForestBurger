@@ -67,7 +67,7 @@ La fuente de verdad es **`db/schema.sql`**. Resumen:
 - **Copias en `item_pedido` e `item_pedido_extra`:** guardan el nombre y el precio del momento. Así, si después cambia o se borra el producto, los pedidos viejos no se alteran: la referencia queda en `NULL` (`ON DELETE SET NULL`) y la copia se conserva.
 - **Los extras van por cada unidad del ítem.** El doble cheddar es una fila con cantidad 2.
 - **No se guarda el subtotal de cada línea:** se calcula. Las cuentas del pedido sí se guardan.
-- **Los estados son** pendiente, confirmado, en_camino, entregado y cancelado. El cambio de estado es un `UPDATE ... WHERE estado = desde`, para que dos personas no pisen el cambio de la otra.
+- **Los estados son** pendiente, confirmado, en_camino (delivery), listo (retiro), entregado y cancelado. El cambio de estado es un `UPDATE ... WHERE estado = desde`, para que dos personas no pisen el cambio de la otra.
 - **Un pedido se graba en una transacción** (`pedidos.Crear`): el pedido, sus ítems, sus extras y el primer evento. Las cuentas que se ven mientras se arma salen del mismo código (`pedidos.CalcularPresupuesto`).
 - **Las fechas** se manejan con la zona de Argentina (`pedidos.Zona`).
 

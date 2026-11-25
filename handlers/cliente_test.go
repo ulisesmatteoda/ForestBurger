@@ -316,3 +316,38 @@ func TestPromo_ArmarYPedir(t *testing.T) {
 	guardarAdminTest(t, tt.q)
 	debeContener(t, "panel", pedirPanel(conSesion(n.mux, adminTest), "/admin/pedidos", false).Body.String(), "1x 2 a elección (promo): Classic (doble) + Cheddar · Classic (simple)")
 }
+
+// Un retiro: el local lo marca "listo para retirar" y el cliente lo ve en el seguimiento.
+func TestSeguimiento_RetiroListo(t *testing.T) {
+	tt := setupCliente(t)
+	ctx := context.Background()
+	if err := tt.q.UpdateAjustes(ctx, sqlc.UpdateAjustesParams{DireccionRetiro: "Güemes 2850", DeliveryActivo: true, CostoEnvio: "1500"}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := pedidos.Crear(ctx, tt.db, pedidos.NuevoPedido{Cliente: "Ulises", Origen: pedidos.OrigenWeb, Entrega: pedidos.EntregaRetiro, Pago: pedidos.PagoEfectivo,
+		Items: []pedidos.NuevoItem{{ProductoID: tt.classic.ID, Tamano: pedidos.TamanoSimple, Cantidad: 1}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pedidos.CambiarEstado(ctx, tt.db, p.ID, pedidos.AccionConfirmar, 20)
+
+	// En el panel, el retiro confirmado tiene "LISTO PARA RETIRAR".
+	guardarAdminTest(t, tt.q)
+	mux := conSesion(tt.nav.mux, adminTest)
+	debeContener(t, "detalle", pedirPanel(mux, "/admin/pedidos/"+idTexto(p.ID), true).Body.String(), "LISTO PARA RETIRAR", "/admin/pedidos/"+idTexto(p.ID)+"/listo")
+	body := tt.nav.pedir(http.MethodGet, "/pedido/"+p.Token, nil, false).Body.String()
+	debeContener(t, "retiro confirmado", body, "Va a estar listo para retirar aprox. a las", "Listo para retirar", "Retirado")
+	if strings.Contains(body, "En camino") {
+		t.Error("un retiro no tiene el paso En camino")
+	}
+
+	pedirExtra(mux, http.MethodPost, "/admin/pedidos/"+idTexto(p.ID)+"/listo", url.Values{}, true)
+	body = tt.nav.pedir(http.MethodGet, "/pedido/"+p.Token, nil, false).Body.String()
+	debeContener(t, "retiro listo", body, "¡Tu pedido está listo!", "Ya podés pasar a retirarlo por Güemes 2850.", "every 15s")
+	debeContener(t, "panel listo", pedirPanel(mux, "/admin/pedidos/"+idTexto(p.ID), true).Body.String(), "Listo para retirar", "MARCAR ENTREGADO")
+}
+
+func TestMenu_NotaDePapas(t *testing.T) {
+	tt := setupCliente(t)
+	debeContener(t, "menú", tt.nav.pedir(http.MethodGet, "/menu", nil, false).Body.String(), "Todas las hamburguesas incluyen papas.")
+}

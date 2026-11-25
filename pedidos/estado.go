@@ -11,14 +11,19 @@ import (
 	sqlc "forestburger/db/sqlc"
 )
 
-// EstadoEnCamino: un delivery que ya salió del local.
-const EstadoEnCamino = "en_camino"
+// EstadoEnCamino: un delivery que ya salió del local. EstadoListo: un retiro que ya se puede pasar
+// a buscar.
+const (
+	EstadoEnCamino = "en_camino"
+	EstadoListo    = "listo"
+)
 
 // Las acciones del detalle de un pedido (son también el último tramo de su ruta en el panel).
 const (
 	AccionConfirmar = "confirmar"
 	AccionRechazar  = "rechazar"
 	AccionEnCamino  = "en-camino"
+	AccionListo     = "listo"
 	AccionEntregado = "entregado"
 	AccionCancelar  = "cancelar"
 )
@@ -56,13 +61,14 @@ var estadoTras = map[string]string{
 	AccionConfirmar: EstadoConfirmado,
 	AccionRechazar:  EstadoCancelado,
 	AccionEnCamino:  EstadoEnCamino,
+	AccionListo:     EstadoListo,
 	AccionEntregado: EstadoEntregado,
 	AccionCancelar:  EstadoCancelado,
 }
 
 // AccionesPara devuelve las acciones posibles para un pedido en su estado actual, en el orden en
 // que se muestran (la principal al final). Un delivery confirmado sale "en camino"; un retiro
-// confirmado se entrega directo.
+// confirmado queda "listo para retirar" y después se entrega.
 func AccionesPara(estado, entrega string) []string {
 	switch estado {
 	case EstadoPendiente:
@@ -71,8 +77,8 @@ func AccionesPara(estado, entrega string) []string {
 		if entrega == EntregaDelivery {
 			return []string{AccionCancelar, AccionEnCamino}
 		}
-		return []string{AccionCancelar, AccionEntregado}
-	case EstadoEnCamino:
+		return []string{AccionCancelar, AccionListo}
+	case EstadoEnCamino, EstadoListo:
 		return []string{AccionCancelar, AccionEntregado}
 	}
 	return nil
@@ -105,7 +111,7 @@ func CambiarEstado(ctx context.Context, db *sql.DB, id int32, accion string, dem
 		return sqlc.Pedido{}, err // sql.ErrNoRows si no existe
 	}
 	if !permitida(accion, actual) {
-		if accion == AccionEnCamino && actual.Entrega == EntregaRetiro {
+		if (accion == AccionEnCamino && actual.Entrega == EntregaRetiro) || (accion == AccionListo && actual.Entrega == EntregaDelivery) {
 			return sqlc.Pedido{}, ErrAccionInvalida
 		}
 		return actual, ErrEstadoCambio
