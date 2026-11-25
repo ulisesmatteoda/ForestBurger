@@ -92,3 +92,26 @@ func TestDocumento_MetasDeLaPWA(t *testing.T) {
 		}
 	}
 }
+
+// AMBIENTE=staging: la franja y el noindex en el panel y en la web del cliente; sin la variable,
+// nada.
+func TestStaging_FranjaYNoIndex(t *testing.T) {
+	render := func(c templ.Component) string {
+		var b strings.Builder
+		if err := c.Render(context.Background(), &b); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
+	}
+	defer func() { Staging = false }()
+	for _, staging := range []bool{true, false} {
+		Staging = staging
+		for nombre, html := range map[string]string{"panel": render(Documento("Productos")), "cliente": render(DocumentoCliente("Menú"))} {
+			franja := strings.Contains(html, "AMBIENTE DE PRUEBA · los pedidos no son reales")
+			meta := strings.Contains(html, `<meta name="robots" content="noindex">`)
+			if franja != staging || meta != staging {
+				t.Errorf("%s con Staging=%v: franja %v, noindex %v", nombre, staging, franja, meta)
+			}
+		}
+	}
+}

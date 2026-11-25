@@ -11,8 +11,9 @@ import (
 	"strings"
 )
 
-// Las fotos de los productos van a disco (a.dirFotos, "uploads" en la app) y la base guarda solo
-// su ruta pública, "/uploads/<nombre>". Misma idea que la API JSON de tp3-extendido.
+// Las fotos de los productos y las promos van a disco (a.dirFotos, "uploads" en la app) y la base
+// guarda solo su ruta pública, "/uploads/<nombre>". En staging y producción van a R2 y la base
+// guarda la URL completa (ver fotos_r2.go); las vistas usan lo que haya, tal cual. Misma idea que la API JSON de tp3-extendido.
 
 const (
 	maxFoto     = 5 << 20         // 5 MB por foto
@@ -97,6 +98,9 @@ func (a *API) guardarFoto(f *fotoSubida) (string, error) {
 		return "", err
 	}
 	nombre := hex.EncodeToString(azar) + f.ext
+	if a.r2 != nil {
+		return a.r2.guardar(nombre, f.datos, f.tipo)
+	}
 	if err := os.MkdirAll(a.dirFotos, 0o755); err != nil {
 		return "", err
 	}
@@ -109,6 +113,10 @@ func (a *API) guardarFoto(f *fotoSubida) (string, error) {
 // borrarFoto borra el archivo de una ruta "/uploads/<nombre>". filepath.Base se queda con el
 // nombre solo, así una ruta rara no puede borrar nada fuera de la carpeta. Si no existe, no pasa nada.
 func (a *API) borrarFoto(ruta string) {
+	if a.r2 != nil && a.r2.esDeAca(ruta) {
+		a.r2.borrar(ruta)
+		return
+	}
 	if !strings.HasPrefix(ruta, rutaFotos) {
 		return
 	}

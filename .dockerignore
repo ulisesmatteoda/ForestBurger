@@ -1,0 +1,7 @@
+.git
+.env
+*.env
+uploads/
+*.patch
+db/sqlc/*.go
+views/*_templ.go

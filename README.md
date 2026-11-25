@@ -585,6 +585,76 @@ Variables del `.env` (el Makefile se las pasa a la app):
 | `ADMIN_EMAILS`   | Mails que pueden ser admin, separados por coma (ver "Admins"). |
 | `DEV_ADMIN_EMAIL`, `DEV_ADMIN_PASSWORD` | **Solo desarrollo.** Admin que se crea solo al arrancar (ver "Admins"). |
 
+## Deploy (staging en Railway, fotos en Cloudflare R2)
+
+En local no cambia nada: `make run` y `make test` andan como siempre, con las fotos en
+`uploads/`. Para el deploy hay un `Dockerfile` de dos etapas:
+- la primera instala sqlc **v1.31.1** y templ **v0.3.1100** (las mismas de local), genera el
+  código y compila la app y `crear-admin`;
+- la final es un `debian:bookworm-slim` con los binarios, `static/` y `db/schema.sql`.
+
+Al arrancar, la app:
+
+- **aplica `db/schema.sql`**, que va dentro del binario (`go:embed`) y es idempotente. Una base
+  nueva queda lista sin herramientas de migración;
+- **escucha en `PORT`** (Railway lo pone solo; en local, 8080) y loguea la URL;
+- **elige dónde van las fotos:** con las 5 variables de R2, al bucket; sin ninguna, al disco. Si
+  hay algunas sí y otras no, no arranca y dice cuál falta;
+- **con `AMBIENTE=staging`** muestra la franja "AMBIENTE DE PRUEBA · los pedidos no son reales" en
+  el panel y en la web, y les pide a los buscadores que no indexen: `<meta name="robots">` y el
+  header `X-Robots-Tag` en todas las respuestas.
+
+### Railway
+
+1. Un proyecto nuevo con **PostgreSQL** (Railway da `DATABASE_URL`) y un servicio **desde este
+   repo**. Railway encuentra el `Dockerfile` y lo usa.
+2. Un ambiente **staging** que despliega desde `main`.
+3. Las variables del servicio:
+
+   | Variable | Valor |
+   |---|---|
+   | `DATABASE_URL` | La referencia a la del Postgres: `${{Postgres.DATABASE_URL}}` |
+   | `SESSION_SECRET` | `openssl rand -hex 32` (una distinta por ambiente) |
+   | `ADMIN_EMAILS` | Los mails del personal |
+   | `COOKIE_SECURE` | `true` (Railway sirve con HTTPS) |
+   | `AMBIENTE` | `staging` |
+   | `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `FOTOS_URL_PUBLICA` | Los de R2 (abajo) |
+
+   **Sin `DEV_ADMIN_*` ni `DEV_DATOS_PRUEBA`:** esas son solo para la compu.
+4. Un dominio público en Settings → Networking. La app lo loguea al arrancar.
+5. **El primer admin:** `railway ssh` en el servicio y, adentro, `./crear-admin`. Pide la
+   contraseña sin mostrarla, y el mail tiene que estar en `ADMIN_EMAILS`.
+
+### Cloudflare R2
+
+1. **R2 → Create bucket.** Por ejemplo, `forestburger-staging`. Ese nombre va en `S3_BUCKET`.
+2. **R2 → Manage API tokens → Create API token.**
+   - Permiso **Object Read & Write**, solo para ese bucket.
+   - Al crearlo, Cloudflare muestra una sola vez el **Access Key ID** y el **Secret Access
+     Key**: van en `S3_ACCESS_KEY_ID` y `S3_SECRET_ACCESS_KEY`.
+   - También muestra el endpoint S3, `https://<account_id>.r2.cloudflarestorage.com`, que va en
+     `S3_ENDPOINT`.
+3. **El bucket → Settings → Public access.**
+   - Activar el **r2.dev subdomain**, o conectar un dominio propio.
+   - Esa URL, sin la barra final (`https://pub-xxxx.r2.dev`), va en `FOTOS_URL_PUBLICA`.
+   - El `r2.dev` tiene límite de uso y es para pruebas: para producción conviene un dominio
+     propio.
+
+Cada foto se sube con un nombre al azar y `Cache-Control: public, max-age=31536000, immutable`,
+y en la base queda la URL completa. Al cambiar o borrar la foto de un producto o de una promo, se
+borra también del bucket.
+
+### Probar la imagen en la compu
+
+```bash
+docker build -t forestburger-staging .
+docker run --rm --network host --env-file .env -e PORT=8091 -e AMBIENTE=staging \
+  -e DATABASE_URL="postgres://usuario:password@localhost:5432/forestburger?sslmode=disable" \
+  forestburger-staging
+```
+
+Corre contra la base local de `make up`, en http://localhost:8091.
+
 ## Notas
 
 - El único archivo `.js` local es `static/panel.js` (el botón COPIAR del detalle de un pedido); todo lo demás es htmx.

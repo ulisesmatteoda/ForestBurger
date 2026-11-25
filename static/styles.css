@@ -814,3 +814,10 @@ fieldset.campo { margin: 0; padding: 0; border: 0; min-width: 0; }
   .elegible:has(input:checked) { background: var(--fb-crema); border-color: var(--fb-crema); color: var(--fb-verde); }
   .elegible-nombre { font-weight: 700; }
 }
+
+/* AMBIENTE=staging: avisa que es el ambiente de prueba, arriba de todo. */
+.franja-prueba {
+  position: relative; z-index: 200; padding: 6px 12px; text-align: center;
+  background: #F2C94C; color: #023320;
+  font-family: 'Barlow', sans-serif; font-size: 12px; font-weight: 800; letter-spacing: 1.5px;
+}

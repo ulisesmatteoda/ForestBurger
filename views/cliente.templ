@@ -164,6 +164,7 @@ templ DocumentoCliente(titulo string) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 			<title>{ titulo } · ForestBurger</title>
+			@metaNoIndex()
 			<meta name="theme-color" content="#023320"/>
 			<link rel="icon" type="image/png" href="/static/icons/icon-192.png"/>
 			<script src="https://unpkg.com/htmx.org@1.9.10"></script>
@@ -172,6 +173,7 @@ templ DocumentoCliente(titulo string) {
 			<link rel="stylesheet" href={ "/static/cliente.css?v=" + VersionCliente }/>
 		</head>
 		<body class="cliente">
+			@FranjaPrueba()
 			<div class="cli">
 				{ children... }
 			</div>

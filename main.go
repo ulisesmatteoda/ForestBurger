@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	_ "embed"
 	"encoding/hex"
 	"log"
 	"net/http"
@@ -17,6 +18,12 @@ import (
 
 	_ "github.com/lib/pq"
 )
+
+// schema es db/schema.sql, metido en el binario: se corre en cada arranque (es idempotente), así
+// una base nueva (la de Railway) queda lista sin herramientas de migración.
+//
+//go:embed db/schema.sql
+var schema string
 
 func main() {
 	// Sin SESSION_SECRET no se pueden firmar las sesiones: mejor no arrancar que arrancar inseguro.
@@ -42,10 +49,26 @@ func main() {
 	}
 	log.Println("Conectado a la base de datos")
 
+	// El schema va antes que todo lo que usa las tablas (el admin de desarrollo, el seed).
+	if _, err := conn.Exec(schema); err != nil {
+		log.Fatalf("No se pudo aplicar db/schema.sql: %v", err)
+	}
+	log.Println("Schema al día")
+
 	// Instancia del repositorio generado por sqlc.
 	queries := sqlc.New(conn)
 	// Instancio api para llamar los metodos de endpoints
 	api := handlers.NewAPI(conn)
+	// Las fotos: al disco (uploads/) o a R2 si están sus variables. A medias, no arranca.
+	if err := api.ConfigurarFotos(); err != nil {
+		log.Fatal(err)
+	}
+	// AMBIENTE=staging: franja "ambiente de prueba" y que los buscadores no lo indexen.
+	staging := os.Getenv("AMBIENTE") == "staging"
+	views.Staging = staging
+	if staging {
+		log.Println("Ambiente de prueba (AMBIENTE=staging)")
+	}
 
 	// Solo en desarrollo (DEV_ADMIN_EMAIL y DEV_ADMIN_PASSWORD en el .env): deja un admin listo para
 	// entrar (make run-app arranca con la base vacía). Si falla, se avisa pero la app arranca igual.
@@ -74,8 +97,35 @@ func main() {
 	// /login y /logout son públicos; todo /admin pasa por el middleware de sesión.
 	api.Rutas(mux)
 
-	log.Println("Servidor escuchando en http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	var handler http.Handler = mux
+	if staging {
+		handler = noIndexar(mux)
+	}
+
+	// Railway (y otros) dicen en qué puerto escuchar con PORT; en local, 8080 como siempre.
+	puerto := os.Getenv("PORT")
+	if puerto == "" {
+		puerto = "8080"
+	}
+	log.Printf("Servidor escuchando en %s", urlPublica(puerto))
+	log.Fatal(http.ListenAndServe(":"+puerto, handler))
+}
+
+// urlPublica es la dirección por la que se entra: la que da Railway si está, o localhost.
+func urlPublica(puerto string) string {
+	if dominio := os.Getenv("RAILWAY_PUBLIC_DOMAIN"); dominio != "" {
+		return "https://" + dominio
+	}
+	return "http://localhost:" + puerto
+}
+
+// noIndexar le dice a los buscadores que no indexen nada (el ambiente de prueba): también las
+// fotos y los archivos de static/, que no llevan el <meta>.
+func noIndexar(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Robots-Tag", "noindex")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // sinCache hace que el navegador pregunte cada vez si un archivo de static/ cambió (si no cambió

@@ -271,3 +271,10 @@ button { font-family: inherit; }
 }
 .cli-chip-slot.activo { background: var(--crema); border-color: var(--crema); color: var(--verde); }
 .cli-centro { margin-top: 8px; text-align: center; }
+
+/* AMBIENTE=staging: avisa que es el ambiente de prueba, arriba de todo. */
+.franja-prueba {
+  position: relative; z-index: 200; padding: 6px 12px; text-align: center;
+  background: #F2C94C; color: #023320;
+  font-family: 'Barlow', sans-serif; font-size: 12px; font-weight: 800; letter-spacing: 1.5px;
+}
