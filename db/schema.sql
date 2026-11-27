@@ -148,3 +148,15 @@ CREATE TABLE IF NOT EXISTS pedido_evento (
     estado VARCHAR(20) NOT NULL,                 -- recibido, confirmado, entregado, cancelado
     detalle VARCHAR(100) NOT NULL DEFAULT ''
 );
+
+-- Las suscripciones a las notificaciones push del panel: una por dispositivo (el celu, la compu)
+-- en el que un admin tocó "Activar notificaciones". endpoint es la dirección del servicio de push
+-- del navegador; p256dh y auth, las claves para cifrar el mensaje.
+CREATE TABLE IF NOT EXISTS push_suscripcion (
+    id SERIAL PRIMARY KEY,
+    admin_email TEXT NOT NULL,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);

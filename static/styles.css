@@ -758,10 +758,25 @@ fieldset.campo { margin: 0; padding: 0; border: 0; min-width: 0; }
   .tabla-pedidos .col-estado { grid-area: estado; }
   .tabla-pedidos .col-ver .boton-icono { position: absolute; inset: 0; width: auto; height: auto; border: 0; border-radius: inherit; opacity: 0; }
 
-  /* Pedidos en el celu, como el Figma: lo de hoy, ventas y cantidad, y los chips de estado.
-     El gráfico, las fechas y el historial quedan para la compu. */
+  /* Pedidos en el celu: ventas y cantidad del rango elegido (sin el ticket ni el desglose), los
+     chips de rango y de estado (se deslizan de costado), Desde/Hasta y el título de la lista. */
   .metricas { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .metrica:nth-child(3), .metrica-pagos, .grafico, .filtro-fecha, .lista-encabezado .lista-titulo { display: none; }
+  .metrica:nth-child(3), .metrica-pagos { display: none; }
+  /* nowrap: en una columna con wrap el ancho sale del contenido (la fila entera de chips) y la
+     página se desborda (lo mismo que pasaba con los chips de Productos). */
+  .filtro-fecha, .lista-encabezado { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 12px; }
+  .filtro-fecha > *, .lista-encabezado > * { min-width: 0; }
+  .rango { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+  .rango .campo { min-width: 0; }
+  .rango .campo input { width: 100%; min-width: 0; }
+  .rango .boton { grid-column: 1 / -1; width: 100%; }
+  /* El gráfico: hasta 7 barras (un día, una semana) entra; un mes no, y se esconde. */
+  .grafico-largo { display: none; }
+  .grafico { padding: 16px 14px; }
+  .barras { gap: 6px; height: 180px; }
+  .barra-grafico { width: 100%; max-width: 30px; }
+  .barra-valor { font-size: 9px; }
+  .barra-dia-nombre { font-size: 11px; }
   .metrica { padding: 14px; }
   .metrica-valor { font-size: 28px; }
   .metricas-y-grafico { gap: 0; }
@@ -821,3 +836,9 @@ fieldset.campo { margin: 0; padding: 0; border: 0; min-width: 0; }
   background: #F2C94C; color: #023320;
   font-family: 'Barlow', sans-serif; font-size: 12px; font-weight: 800; letter-spacing: 1.5px;
 }
+
+/* Notificaciones push (Ajustes): los botones que no corresponden van con [hidden]. */
+[hidden] { display: none !important; }
+.tarjeta-push { margin-top: 24px; }
+.push-estado { margin: 0 0 14px; font-size: 14px; color: var(--fb-texto-secundario); }
+.push-botones { display: flex; flex-wrap: wrap; gap: 12px; }

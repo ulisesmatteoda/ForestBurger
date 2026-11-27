@@ -144,7 +144,8 @@ templ Metricas(m MetricasPedidos, oob bool) {
 			<span class="metrica-detalle">{ m.TicketDetalle }</span>
 		</div>
 	</section>
-	<section class="grafico" aria-label="Ventas por día">
+	// grafico-largo (más de 7 barras: un mes, un rango largo): en el celu no entra, se esconde.
+	<section class={ "grafico", templ.KV("grafico-largo", len(m.Barras) > 7) } aria-label="Ventas por día">
 		<div>
 			<h2 class="lista-titulo">{ m.GraficoTitulo }</h2>
 			<p class="grafico-sub">{ m.GraficoSub }</p>

@@ -9,6 +9,10 @@ var VersionEstilos string
 // VersionPanelJS es lo mismo para static/panel.js.
 var VersionPanelJS string
 
+// ClavePush es la clave pública VAPID: si no está vacía, Ajustes muestra la tarjeta para activar
+// las notificaciones push en el dispositivo (la pone handlers.ConfigurarPush).
+var ClavePush string
+
 // Staging lo prende main.go con AMBIENTE=staging: la franja "ambiente de prueba" arriba de todo y
 // el pedido a los buscadores de que no indexen (en el panel y en la web del cliente).
 var Staging bool

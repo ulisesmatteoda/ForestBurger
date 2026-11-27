@@ -25,7 +25,9 @@ El diseño está en Figma: archivo `sU9jcobXIMVEt95QMQfrGI`, páginas Admin `15:
 - Cada entrega va en su propia branch, según lo que pide la cátedra.
 - **El código generado no se sube:** `db/sqlc/*.go` y `views/*_templ.go` están en `.gitignore`. Se regeneran con `make generate` (sqlc + templ), y `build`, `test` y `run` lo hacen solos.
 - Se prefieren soluciones **simples y acordes a lo visto en la cursada** antes que patrones de industria todavía no enseñados (por ejemplo, nada de healthchecks de Docker ni migraciones con herramientas externas).
-- **Sin JavaScript propio.** Todo con htmx y CSS. La única excepción es `static/panel.js`, para lo que htmx no puede hacer, como copiar al portapapeles. La PWA va sin service worker.
+- **Sin JavaScript propio.** Todo con htmx y CSS. Las únicas excepciones, para lo que htmx no puede hacer:
+  - `static/panel.js`: copiar al portapapeles y activar o desactivar las notificaciones push;
+  - `static/sw.js`: el service worker, **solo para las notificaciones push**. No tiene manejador de `fetch`, así que no guarda nada en caché y la app no anda offline.
 - **El esquema es idempotente:**
   - las tablas van con `CREATE TABLE IF NOT EXISTS`;
   - las columnas nuevas, con `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`;
@@ -61,6 +63,7 @@ La fuente de verdad es **`db/schema.sql`**. Resumen:
 | `pedido_evento` | El historial de estados |
 | `admin` | El personal que entra al panel (bcrypt) |
 | `ajustes` y `horario` | Los datos del local (fila única) y los horarios por día (0 = lunes) |
+| `push_suscripcion` | Los dispositivos con las notificaciones push activadas (uno por celu o compu) |
 
 ### Decisiones de diseño
 

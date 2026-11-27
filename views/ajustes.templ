@@ -41,6 +41,7 @@ templ AjustesPage(f FormAjustes) {
 			</div>
 		</header>
 		@AjustesForm(f)
+		@TarjetaPush()
 		// En el celu no hay barra lateral: la sesión y "Salir" van acá, al final.
 		if email := auth.AdminDesdeContexto(ctx); email != "" {
 			<div class="sesion-celu solo-celu">
@@ -257,4 +258,24 @@ func textoOMarcador(s, marcador string) string {
 		return marcador
 	}
 	return s
+}
+
+// TarjetaPush activa o desactiva las notificaciones push en este dispositivo (solo si el servidor
+// tiene las claves VAPID). Los botones los maneja static/panel.js: arrancan ocultos y "Cargando…"
+// hasta que se sabe si este dispositivo ya está suscripto.
+templ TarjetaPush() {
+	if ClavePush != "" {
+		<section class="tarjeta tarjeta-push" data-push-caja="true" data-clave={ ClavePush }>
+			<div class="tarjeta-cabecera">
+				<h2 class="tarjeta-titulo">NOTIFICACIONES</h2>
+				<p class="tarjeta-sub">Que te llegue un aviso a este dispositivo cuando entra un pedido por la web, aunque la app esté cerrada. Se activa en cada celu o compu por separado.</p>
+			</div>
+			<p class="push-estado" data-push-estado="true" aria-live="polite">Cargando…</p>
+			<div class="push-botones">
+				<button type="button" class="boton boton-primario" data-push="activar" hidden>ACTIVAR EN ESTE DISPOSITIVO</button>
+				<button type="button" class="boton boton-secundario" data-push="probar" hidden>PROBAR</button>
+				<button type="button" class="boton boton-texto" data-push="desactivar" hidden>DESACTIVAR EN ESTE DISPOSITIVO</button>
+			</div>
+		</section>
+	}
 }

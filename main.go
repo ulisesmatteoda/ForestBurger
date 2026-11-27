@@ -72,6 +72,10 @@ func main() {
 	if err := api.ConfigurarFotos(); err != nil {
 		log.Fatal(err)
 	}
+	// Las notificaciones push: con las claves VAPID, prendidas; sin ninguna, apagadas.
+	if err := api.ConfigurarPush(); err != nil {
+		log.Fatal(err)
+	}
 	// AMBIENTE=staging: franja "ambiente de prueba" y que los buscadores no lo indexen.
 	staging := os.Getenv("AMBIENTE") == "staging"
 	views.Staging = staging

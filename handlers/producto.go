@@ -16,6 +16,7 @@ type API struct {
 	q        *sqlc.Queries // las queries de sqlc sobre db
 	dirFotos string        // carpeta donde se guardan las fotos de los productos
 	r2       *almacenR2    // si no es nil, las fotos van a R2 en vez del disco (ConfigurarFotos)
+	push     enviadorPush  // si no es nil, avisa los pedidos nuevos por push (ConfigurarPush)
 }
 
 // NewAPI arma la API sobre la conexión a la base. Las fotos van a uploads/; los tests la cambian

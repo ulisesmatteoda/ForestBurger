@@ -13,7 +13,7 @@ ESPERAR_DB = until docker compose exec -T database sh -c 'pg_isready -h 127.0.0.
 # $(call PSQL) usa la base de desarrollo; $(call PSQL,otra) usa esa otra.
 PSQL = docker compose exec -T -e BASE=$(1) database sh -c 'PGOPTIONS="-c client_min_messages=warning" psql -q -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$${BASE:-$$POSTGRES_DB}"'
 
-.PHONY: all generate build up up-limpio down wait-db wait-db-limpio schema test test-api run run-app crear-admin clean
+.PHONY: all generate build up up-limpio down wait-db wait-db-limpio schema test test-api run run-app crear-admin vapid clean
 
 all: test
 
@@ -85,6 +85,10 @@ run: build schema
 # Crea un admin o le cambia la contraseña, en la base de desarrollo (la que usa make run).
 crear-admin: generate schema
 	@DATABASE_URL="$(DB_URL)" go run ./cmd/crear-admin
+
+# Genera las claves VAPID de las notificaciones push (una vez por ambiente: van al .env o a Railway).
+vapid:
+	@go run ./cmd/vapid
 
 # Tareas posteriores -------------------------------------------------
 

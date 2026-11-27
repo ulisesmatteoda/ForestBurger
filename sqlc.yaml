@@ -8,6 +8,7 @@ sql:
       - "db/queries/ajustes.sql"
       - "db/queries/pedidos.sql"
       - "db/queries/promos.sql"
+      - "db/queries/push.sql"
     schema: "db/schema.sql"    
     gen:
       go:

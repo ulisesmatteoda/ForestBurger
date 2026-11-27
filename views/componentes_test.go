@@ -115,3 +115,15 @@ func TestStaging_FranjaYNoIndex(t *testing.T) {
 		}
 	}
 }
+
+// En el celu, el gráfico de más de 7 barras (un mes) se esconde: lleva la clase grafico-largo.
+func TestMetricas_GraficoLargo(t *testing.T) {
+	semana := make([]BarraVenta, 7)
+	mes := make([]BarraVenta, 30)
+	if html := render(t, Metricas(MetricasPedidos{Barras: semana}, false)); strings.Contains(html, "grafico-largo") {
+		t.Error("una semana (7 barras) no es un gráfico largo")
+	}
+	if html := render(t, Metricas(MetricasPedidos{Barras: mes}, false)); !strings.Contains(html, `class="grafico grafico-largo"`) {
+		t.Error("un mes (30 barras) es un gráfico largo")
+	}
+}

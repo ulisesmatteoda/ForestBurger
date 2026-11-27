@@ -5,6 +5,7 @@ go 1.26.0
 require github.com/lib/pq v1.12.3
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/a-h/templ v0.3.1100
 	github.com/minio/minio-go/v7 v7.4.1
 	golang.org/x/crypto v0.59.0
@@ -14,6 +15,7 @@ require (
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect

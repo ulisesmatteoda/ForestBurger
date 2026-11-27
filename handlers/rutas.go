@@ -43,6 +43,9 @@ func (a *API) RutasAuth(mux *http.ServeMux) {
 	mux.HandleFunc("GET /pedido/{token}", a.Seguimiento)
 	mux.HandleFunc("GET /pedido/{token}/estado", a.EstadoSeguimiento)
 
+	// El service worker de las notificaciones push (público: el navegador lo pide sin sesión).
+	mux.HandleFunc("GET /sw.js", ServiceWorker)
+
 	mux.HandleFunc("GET /login", a.FormLogin)
 	mux.HandleFunc("POST /login", a.Login)
 	mux.HandleFunc("POST /logout", a.Logout)
@@ -97,5 +100,8 @@ func (a *API) RutasAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/ajustes", a.GuardarAjustes)
 	mux.HandleFunc("GET /admin/ajustes/transferencia", a.VistaTransferencia)
 	mux.HandleFunc("GET /admin/ajustes/cambios", a.AvisoCambios)
+	mux.HandleFunc("POST /admin/push/suscribir", a.SuscribirPush)
+	mux.HandleFunc("POST /admin/push/desuscribir", a.DesuscribirPush)
+	mux.HandleFunc("POST /admin/push/prueba", a.ProbarPush)
 	mux.HandleFunc("PUT /admin/local/abierto", a.CambiarLocalAbierto)
 }

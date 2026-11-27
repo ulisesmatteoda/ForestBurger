@@ -390,6 +390,7 @@ func (a *API) ConfirmarPedido(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	borrarCookie(w, cookieCarrito) // los datos quedan, para el próximo pedido
+	a.notificarPedidoNuevo(p)      // a los celus del local, si activaron las notificaciones
 	http.Redirect(w, r, "/pedido/"+p.Token, http.StatusSeeOther)
 }
 

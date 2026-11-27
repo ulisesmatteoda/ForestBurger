@@ -659,6 +659,47 @@ alarma no se pierde al navegar.
 - **`panel.js` va en el `<head>`:** si estuviera en el body, se volvería a cargar en cada
   navegación.
 
+### Notificaciones push (aviso al celu cuando entra un pedido)
+
+Con la app del panel instalada en el celu, cuando entra un **pedido por la web** llega una
+notificación aunque la app esté cerrada: "Nuevo pedido #18 · Martina · $17.000 · Delivery". Al
+tocarla, abre el pedido. Los pedidos que se cargan a mano en el panel no avisan, porque ya entran
+confirmados.
+
+**Activar y desactivar:** en **Ajustes → Notificaciones**, "Activar en este dispositivo" (pide
+permiso), "Probar" y "Desactivar en este dispositivo". Cada celu o compu se activa por separado.
+Si alguna vez se negó el permiso, hay que habilitarlo en la configuración del navegador o del
+celu.
+
+**Cómo funciona:**
+- Es Web Push, con claves VAPID. Es la **excepción a "sin JS propio"**:
+  - `static/sw.js` es el service worker: recibe el aviso y muestra la notificación. Solo hace
+    eso: no guarda nada en caché;
+  - `static/panel.js` pide el permiso y suscribe el dispositivo.
+- El servidor guarda cada dispositivo en `push_suscripcion` y, al confirmar un pedido web, avisa
+  a todos en segundo plano (`handlers/push.go`).
+- Los dispositivos que el servicio de push da por muertos (se desinstaló la app) se borran solos.
+
+**Límites:**
+- **Suena con el sonido de notificación del sistema, una vez, y vibra.** Una notificación web no
+  puede hacer sonar una alarma en loop. Si el panel está abierto en pantalla, además suena la
+  alarma de siempre.
+- **Android (Chrome):** anda instalada o no, con la app cerrada.
+- **iPhone:** solo con la app **instalada** (Compartir → Agregar a inicio) e iOS 16.4 o más.
+- **Hace falta HTTPS** (Railway lo tiene). En la compu, `localhost` sirve para probar.
+
+**Configurarlo:**
+1. `make vapid` genera las claves. Las tres líneas van a las variables del servidor (en Railway:
+   Variables), y en `VAPID_SUBJECT` va un mail tuyo.
+2. Sin las tres variables, el push queda apagado y la tarjeta de Ajustes no aparece, como en
+   local y en los tests. Si hay algunas sí y otras no, la app no arranca y dice cuál falta.
+3. **Probarlo en el celu:**
+   1. entrar al panel de staging en el celu;
+   2. instalar la app;
+   3. Ajustes → Activar;
+   4. cerrar la app;
+   5. hacer un pedido desde la web en otro dispositivo.
+
 ### Si anda lenta
 
 La app mide lo suyo, para separar lo que tarda el código de lo que tarda la red:
